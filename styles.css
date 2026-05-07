@@ -77,7 +77,7 @@
     display: flex;
     align-items: center;
     gap: 1.5rem;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
   .nav-user {
     display: flex;
@@ -89,7 +89,7 @@
   .nav-timer {
     font-family: var(--font-mono);
     color: var(--accent-teal);
-    font-size: 0.9rem;
+    font-size: 1rem;
     border: 1px solid var(--accent-teal);
     padding: 0.3rem 0.75rem;
     border-radius: 6px;
@@ -97,7 +97,7 @@
   .nav-day-badge {
     background: var(--gradient);
     color: white;
-    font-size: 0.75rem;
+    font-size: 0.82rem;
     font-weight: 700;
     padding: 0.25rem 0.75rem;
     border-radius: 999px;
@@ -178,8 +178,8 @@
     transition: opacity 0.2s, transform 0.1s;
     margin-top: 0.5rem;
   }
-  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
-  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:hover { opacity: 0.9; transform: none; }
+  .btn-primary:active { transform: none; }
   .login-error {
     background: rgba(248,113,113,0.1);
     border: 1px solid rgba(248,113,113,0.3);
@@ -224,7 +224,7 @@
     gap: 0.6rem;
     padding: 0.6rem 0.75rem;
     border-radius: 8px;
-    font-size: 0.88rem;
+    font-size: 0.98rem;
     font-weight: 500;
     color: var(--text-muted);
     cursor: pointer;
@@ -235,7 +235,7 @@
     background: rgba(232,121,249,0.1);
     color: var(--accent-pink);
   }
-  .sidebar-item .icon { font-size: 1rem; }
+  .sidebar-item .icon { font-size: 1.25rem; }
   
   .main-content {
     flex: 1;
@@ -297,13 +297,13 @@
   
   /* ===== THEMES GRID ===== */
   .section-title {
-    font-size: 1.2rem;
+    font-size: 1.35rem;
     font-weight: 800;
     margin-bottom: 1.25rem;
   }
   .section-subtitle {
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     margin-top: -0.75rem;
     margin-bottom: 1.5rem;
   }
@@ -325,8 +325,8 @@
   }
   .theme-card:hover {
     border-color: var(--accent-pink);
-    transform: translateY(-3px);
-    box-shadow: 0 12px 40px rgba(232,121,249,0.12);
+    transform: none;
+    box-shadow: 0 10px 28px rgba(232,121,249,0.12);
   }
   .theme-card.selected {
     border-color: var(--accent-pink);
@@ -381,7 +381,7 @@
   }
   .req-tab {
     padding: 1rem 1.5rem;
-    font-size: 0.88rem;
+    font-size: 1rem;
     font-weight: 600;
     color: var(--text-muted);
     cursor: pointer;
@@ -410,11 +410,11 @@
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    padding: 0.9rem 1.1rem;
     background: var(--surface2);
     border-radius: 8px;
     margin-bottom: 0.5rem;
-    font-size: 0.875rem;
+    font-size: 1rem;
     line-height: 1.5;
     border: 1px solid transparent;
     transition: border-color 0.15s;
@@ -422,7 +422,7 @@
   .req-item:hover { border-color: var(--border); }
   .req-item-pts {
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: 0.82rem;
     color: var(--accent-pink);
     background: rgba(232,121,249,0.1);
     padding: 0.15rem 0.5rem;
@@ -470,7 +470,7 @@
     height: 100%;
     background: var(--gradient);
     border-radius: 999px;
-    transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .progress-tasks {
     display: flex;
@@ -482,7 +482,7 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.8rem;
+    font-size: 0.95rem;
     color: var(--text-muted);
     background: var(--surface2);
     border: 1px solid var(--border);
@@ -540,8 +540,7 @@
   .lb-rank.gold { color: #fbbf24; }
   .lb-rank.silver { color: #94a3b8; }
   .lb-rank.bronze { color: #b45309; }
-  .lb-name { font-weight: 600; font-size: 0.9rem; }
-  .lb-theme { font-size: 0.8rem; color: var(--text-muted); }
+  .lb-theme { font-size: 0.9rem; color: var(--text-muted); }
   .lb-pts {
     font-family: var(--font-mono);
     font-weight: 700;
@@ -549,8 +548,9 @@
   }
   .lb-progress { display: flex; align-items: center; gap: 0.5rem; }
   .lb-bar-wrap { flex: 1; background: var(--surface2); border-radius: 999px; height: 6px; overflow: hidden; }
-  .lb-bar-fill { height: 100%; border-radius: 999px; background: var(--gradient); transition: width 0.8s; }
-  .lb-pct { font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted); width: 35px; text-align: right; }
+  .lb-bar-fill { height: 100%; border-radius: 999px; background: var(--gradient); transition: width 0.4s; }
+  .lb-name { font-weight: 600; font-size: 1rem; }
+  .lb-pct { font-size: 0.8rem; font-family: var(--font-mono); color: var(--text-muted); width: 35px; text-align: right; }
   
   /* ===== DIAGRAMS PAGE ===== */
   .diagram-grid {
@@ -563,21 +563,21 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    transition: all 0.2s;
+    transition: border-color 0.15s;
   }
-  .diagram-card:hover { border-color: var(--accent-blue); transform: translateY(-3px); }
+  .diagram-card:hover { border-color: var(--accent-blue); transform: none; }
   .diagram-preview {
     background: var(--surface2);
-    padding: 2rem;
-    min-height: 200px;
+    padding: 2.35rem;
+    min-height: 220px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-bottom: 1px solid var(--border);
   }
   .diagram-info { padding: 1.25rem; }
-  .diagram-title { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.35rem; }
-  .diagram-subtitle { font-size: 0.8rem; color: var(--text-muted); }
+  .diagram-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.45rem; }
+  .diagram-subtitle { font-size: 0.9rem; color: var(--text-muted); }
   .btn-download {
     display: inline-flex;
     align-items: center;
@@ -665,7 +665,7 @@
     align-items: center;
     gap: 0.5rem;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    animation: slideIn 0.3s ease;
+    animation: none;
     max-width: 320px;
   }
   .toast.success { border-left: 3px solid var(--success); }
@@ -729,7 +729,7 @@
   .svg-diagram {
     width: 100%;
     height: auto;
-    max-height: 180px;
+    max-height: 220px;
     opacity: 0.85;
   }
   
@@ -762,11 +762,11 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
   }
-  .timer-urgent { animation: pulse 1s infinite; color: var(--error) !important; border-color: var(--error) !important; }
+  .timer-urgent { animation: none !important; color: var(--error) !important; border-color: var(--error) !important; }
   
   /* ===== PAGE TRANSITIONS ===== */
   .page-enter {
-    animation: fadeUp 0.3s ease both;
+    animation: none;
   }
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(12px); }
