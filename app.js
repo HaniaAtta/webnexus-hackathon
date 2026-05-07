@@ -241,6 +241,106 @@ const CONFIG = {
     { id: 5, name: "Fatima Ali", theme: "community_health", pts: 30, pct: 45, day: 1 },
     { id: 6, name: "Bilal Ahmed", theme: "ai_task", pts: 27, pct: 41, day: 1 },
   ];
+
+  // ===== HANDBOOK DETAILS (extracted from PDF) =====
+  const HANDBOOK_DETAILS = {
+    community_health: {
+      problem:
+        "Many underserved communities struggle to access doctor availability, booking, and reliable health guidance. Providers also lack simple digital channels.",
+      objective:
+        "Build a full-stack healthcare platform where patients can find doctors, book appointments, view resources, and manage a basic profile while providers manage availability.",
+      targetUsers: [
+        "Patient / Community Member",
+        "Healthcare Provider (Doctor / Clinic)",
+        "Admin / Coordinator",
+      ],
+      uiux: [
+        "Trustworthy medical aesthetic (blues, whites, greens).",
+        "Clear typography hierarchy and interactive states on controls.",
+        "Graceful loading and empty states.",
+      ],
+      responsive: [
+        "Responsive on 375px mobile, 768px tablet, and desktop.",
+        "Mobile-friendly booking flow and adaptive card grid.",
+      ],
+      interactive: [
+        "Live doctor search and filters.",
+        "Date/time booking with disabled past dates.",
+        "Real-time form validation and submission feedback.",
+      ],
+    },
+    ai_task: {
+      problem:
+        "Users lose productivity from context-switching and repetitive task management with low-intelligence tools.",
+      objective:
+        "Build an AI productivity app for task management, scheduling, and workflow automation using structured UI + natural language chat.",
+      targetUsers: [
+        "Student / Learner",
+        "Professional / Freelancer",
+        "Team Lead / Manager",
+      ],
+      uiux: [
+        "Distraction-free UI with clear focus states.",
+        "Chat bubbles, timestamps, and clear task priority colors.",
+        "Strong empty states for task/calendar views.",
+      ],
+      responsive: [
+        "Usable from mobile touch screens to desktop.",
+        "Task cards and calendar adapt cleanly at small widths.",
+      ],
+      interactive: [
+        "Task add/edit/delete and filtering by status/priority.",
+        "Chat input sends prompts and shows AI/mock replies.",
+        "Calendar date interactions for task visibility.",
+      ],
+    },
+    financial_dashboard: {
+      problem:
+        "Retail users and students need cleaner tools for market visualization, portfolio tracking, and actionable insights without clutter.",
+      objective:
+        "Build a full-stack financial dashboard with live/near-live market data, portfolio/watchlist tracking, and chart-based analytics.",
+      targetUsers: ["Retail Investor", "Finance Student", "Analyst / Researcher"],
+      uiux: [
+        "Professional data-dense layout (dark/light capable).",
+        "Consistent gain/loss color coding and chart tooltips.",
+        "Sortable tables and visible loading/refresh indicators.",
+      ],
+      responsive: [
+        "Charts scale fluidly; no awkward mobile overflow.",
+        "Tables become scrollable and cards stack on mobile.",
+      ],
+      interactive: [
+        "Live ticker movement in header/landing.",
+        "Debounced symbol search and range-switching charts.",
+        "Watchlist add/remove interactions.",
+      ],
+    },
+    sustainability: {
+      problem:
+        "People lack practical tools to measure and reduce environmental impact; communities need motivating, actionable sustainability systems.",
+      objective:
+        "Build a full-stack sustainability platform for footprint tracking, eco-actions, community challenges, environmental data, and recommendations.",
+      targetUsers: [
+        "Eco-Conscious Individual",
+        "Community Organizer / NGO",
+        "Student / Educator",
+      ],
+      uiux: [
+        "Nature-inspired visual language with gamification.",
+        "Consistent impact-oriented data visuals.",
+        "Motivational microcopy and visible progress cues.",
+      ],
+      responsive: [
+        "Touch-friendly calculator/dashboard on mobile.",
+        "Challenge cards and map/chart components adapt without overflow.",
+      ],
+      interactive: [
+        "Real-time footprint updates based on inputs.",
+        "Action logging with points preview.",
+        "Leaderboard filters and animated challenge progress.",
+      ],
+    },
+  };
   
   // ===== STATE =====
   let state = {
@@ -248,6 +348,7 @@ const CONFIG = {
     currentPage: "login",
     currentDay: 1,
     selectedTheme: null,
+    previewTheme: null,
     themeConfirmed: false,
     timerStart: null,
     timerEl: null,
@@ -585,7 +686,13 @@ const CONFIG = {
   function renderThemesPage() {
     return `
       <div class="section-title">Choose Your Theme</div>
-      <div class="section-subtitle">Review all themes before locking in. Once confirmed, you cannot change your theme.</div>
+      <div class="section-subtitle">Review all themes in detail before locking in. Use Review Only to explore requirements first.</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;margin-bottom:1.25rem;">
+        <div style="font-weight:800;margin-bottom:0.35rem;">Recommended Flow</div>
+        <div style="font-size:0.92rem;color:var(--text-muted);line-height:1.6;">
+          1) Select theme → 2) Open Review Only (requirements + design expectations) → 3) Lock theme & start timer.
+        </div>
+      </div>
       <div class="themes-grid">
         ${THEMES.map(theme => `
           <div class="theme-card ${state.selectedTheme === theme.id ? 'selected' : ''}" onclick="selectTheme('${theme.id}')">
@@ -607,9 +714,12 @@ const CONFIG = {
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
           <div>
             <div style="font-weight:700;margin-bottom:0.25rem;">Ready to lock in ${THEMES.find(t=>t.id===state.selectedTheme)?.name}?</div>
-            <div style="font-size:0.82rem;color:var(--text-muted);">This action is irreversible. Your timer will start immediately.</div>
+            <div style="font-size:0.9rem;color:var(--text-muted);">You can first open Review Only to read detailed handbook notes and requirements. Locking starts the timer and is irreversible.</div>
           </div>
-          <button class="btn-confirm" onclick="confirmTheme()">🔒 Lock in Theme & Start Timer →</button>
+          <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+            <button class="btn-ghost" onclick="reviewTheme('${state.selectedTheme}')">📖 Review Only</button>
+            <button class="btn-confirm" onclick="confirmTheme()">🔒 Lock in Theme & Start Timer →</button>
+          </div>
         </div>
       ` : ''}
       ${state.themeConfirmed ? `
@@ -642,13 +752,67 @@ const CONFIG = {
       }
     );
   }
+
+  function reviewTheme(themeId) {
+    if (!themeId) return;
+    const theme = THEMES.find(t => t.id === themeId);
+    if (!theme) return;
+    state.previewTheme = themeId;
+    const handbook = HANDBOOK_DETAILS[theme.id] || {};
+    showReviewModal(theme, handbook);
+  }
+
+  function showReviewModal(theme, handbook = {}) {
+    const overlay = document.getElementById("modal-overlay");
+    if (!overlay) return;
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:900px;max-height:82vh;display:flex;flex-direction:column;">
+        <h3 style="margin-bottom:0.4rem;">${theme.icon} ${theme.name} — Review Overview</h3>
+        <p style="margin-bottom:0.8rem;">Read this before locking. This is a quick handbook summary for planning.</p>
+        <div style="overflow:auto;padding-right:0.25rem;">
+          <div class="req-section" style="margin-bottom:1rem;">
+            <h3>🧩 Problem Statement</h3>
+            <p style="font-size:0.95rem;color:var(--text-muted);line-height:1.65;">${handbook.problem || theme.desc}</p>
+          </div>
+          <div class="req-section" style="margin-bottom:1rem;">
+            <h3>🎯 Objective</h3>
+            <p style="font-size:0.95rem;color:var(--text-muted);line-height:1.65;">${handbook.objective || theme.desc}</p>
+          </div>
+          <div class="req-section" style="margin-bottom:1rem;">
+            <h3>👥 Target Users</h3>
+            ${(handbook.targetUsers || []).map(item => `<div class="req-item"><span>•</span><span>${item}</span></div>`).join("")}
+          </div>
+          <div class="req-section" style="margin-bottom:1rem;">
+            <h3>📐 Required Design Artifacts</h3>
+            <div class="req-item"><span>1️⃣</span><span>Use Case Model</span></div>
+            <div class="req-item"><span>2️⃣</span><span>Class Diagram</span></div>
+            <div class="req-item"><span>3️⃣</span><span>Sequence Diagram</span></div>
+          </div>
+          <div class="req-section" style="margin-bottom:1rem;">
+            <h3>📄 Day 1 / Day 2 Scope</h3>
+            <div class="req-item"><span>•</span><span>Day 1 items: ${theme.day1.length} (${theme.day1Points} pts)</span></div>
+            <div class="req-item"><span>•</span><span>Day 2 items: ${theme.day2.length} (${theme.day2Points} pts) ${state.currentDay >= 2 ? "— currently unlocked" : "— unlocks on Day 2"}</span></div>
+            <div class="req-item"><span>•</span><span>Must-have items: ${theme.must.length}</span></div>
+          </div>
+        </div>
+        <div class="modal-actions" style="margin-top:1rem;">
+          <button class="btn-ghost" onclick="closeModal()">Close</button>
+          <button class="btn-ghost" onclick="closeModal(); navigate('requirements');">Open Full Requirements</button>
+          <button class="btn-confirm" onclick="closeModal(); confirmTheme();">Lock Theme & Start Timer</button>
+        </div>
+      </div>
+    `;
+    overlay.classList.add("open");
+  }
   
   // ===== REQUIREMENTS PAGE =====
   function renderRequirementsPage() {
     const theme = THEMES.find(t => t.id === state.selectedTheme);
     if (!theme) return `<div>No theme selected.</div>`;
+    const handbook = HANDBOOK_DETAILS[theme.id] || {};
     const tabs = [
       { id: "overview", label: "📌 Overview" },
+      { id: "design", label: "📐 Design / UML" },
       { id: "day1", label: `📄 Day 1 (${theme.day1Points} pts)` },
       ...(state.currentDay >= 2 ? [{ id: "day2", label: `⚙️ Day 2 (${theme.day2Points} pts)` }] : [{ id: "day2", label: `🔒 Day 2 (Unlocks Tomorrow)`, locked: true }]),
       { id: "bonus", label: `⭐ Bonus (+${theme.bonusPoints} pts)` },
@@ -659,12 +823,17 @@ const CONFIG = {
     return `
       <div class="section-title">${theme.icon} ${theme.name}</div>
       <div class="section-subtitle">Day ${state.currentDay} requirements are shown below. Review carefully before building.</div>
+      <div style="background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.25);border-radius:var(--radius);padding:0.9rem 1rem;margin-bottom:1rem;">
+        <div style="font-size:0.95rem;line-height:1.6;">
+          <strong>Design expectation:</strong> include <strong>Use Case Model</strong>, <strong>Class Diagram</strong>, and <strong>Sequence Diagram</strong> aligned with requirements and implementation.
+        </div>
+      </div>
       <div class="req-panel">
         <div class="req-tabs">
           ${tabs.map(tab => `<div class="req-tab ${activeTab === tab.id ? 'active' : ''} ${tab.locked ? 'locked' : ''}" onclick="${tab.locked ? 'toast(\'Day 2 requirements unlock on Day 2!\', \'warning\')' : `setReqTab('${tab.id}')`}">${tab.label}</div>`).join('')}
         </div>
         <div class="req-content">
-          ${renderReqTab(theme, activeTab)}
+          ${renderReqTab(theme, activeTab, handbook)}
         </div>
       </div>
     `;
@@ -675,12 +844,24 @@ const CONFIG = {
     render();
   }
   
-  function renderReqTab(theme, tab) {
+  function renderReqTab(theme, tab, handbook = {}) {
     if (tab === "overview") {
       return `
         <div class="req-section">
           <h3>🎯 Objective</h3>
           <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.7;">${theme.desc}</p>
+        </div>
+        <div class="req-section">
+          <h3>🎨 UI/UX + Responsiveness Checklist</h3>
+          ${(handbook.uiux || []).map(item => `
+            <div class="req-item"><span>•</span><span>${item}</span></div>
+          `).join('')}
+          ${(handbook.responsive || []).map(item => `
+            <div class="req-item"><span>📱</span><span>${item}</span></div>
+          `).join('')}
+          ${(handbook.interactive || []).map(item => `
+            <div class="req-item"><span>⚡</span><span>${item}</span></div>
+          `).join('')}
         </div>
         <div class="req-section">
           <h3>📊 Scoring Breakdown</h3>
@@ -699,6 +880,42 @@ const CONFIG = {
                 <div style="font-size:1.1rem;font-weight:800;font-family:var(--font-mono);color:var(--accent-teal);">${s.pct}</div>
               </div>
             `).join('')}
+          </div>
+        </div>
+      `;
+    }
+    if (tab === "design") {
+      return `
+        <div class="req-section">
+          <h3>📐 Required Design Artifacts</h3>
+          <p style="font-size:0.9rem;color:var(--text-muted);line-height:1.6;margin-bottom:0.8rem;">
+            Before implementation, prepare design documents that map directly to your selected theme requirements.
+          </p>
+          <div class="req-item"><span>1️⃣</span><span><strong>Use Case Model:</strong> actors, use-cases, and system boundaries.</span></div>
+          <div class="req-item"><span>2️⃣</span><span><strong>Class Diagram:</strong> entities/tables, relationships, and key attributes.</span></div>
+          <div class="req-item"><span>3️⃣</span><span><strong>Sequence Diagram:</strong> request/response flow for login + core feature.</span></div>
+        </div>
+        <div class="diagram-grid">
+          <div class="diagram-card">
+            <div class="diagram-preview">${renderUseCaseDiagram(theme)}</div>
+            <div class="diagram-info">
+              <div class="diagram-title">Use Case Model</div>
+              <div class="diagram-subtitle">Actors and functional scope</div>
+            </div>
+          </div>
+          <div class="diagram-card">
+            <div class="diagram-preview">${renderClassDiagram(theme)}</div>
+            <div class="diagram-info">
+              <div class="diagram-title">Class Diagram</div>
+              <div class="diagram-subtitle">Data model alignment with DB/API</div>
+            </div>
+          </div>
+          <div class="diagram-card">
+            <div class="diagram-preview">${renderSequenceDiagram(theme)}</div>
+            <div class="diagram-info">
+              <div class="diagram-title">Sequence Diagram</div>
+              <div class="diagram-subtitle">Interaction flow across layers</div>
+            </div>
           </div>
         </div>
       `;
@@ -895,203 +1112,87 @@ const CONFIG = {
   
   // ===== DIAGRAMS PAGE =====
   function renderDiagramsPage() {
-    const theme = THEMES.find(t => t.id === state.selectedTheme);
-    if (!theme || !state.user) return `<div>No theme selected.</div>`;
+    const themeId = state.themeConfirmed ? state.selectedTheme : (state.previewTheme || state.selectedTheme);
+    const theme = THEMES.find(t => t.id === themeId);
+    if (!theme) return `<div>No theme selected. Please select a theme first.</div>`;
 
-    const wizard = state.designWizard || getUserDesignWizard(state.user.id);
-    state.designWizard = wizard;
-
-    const stepNames = [
-      { id: "requirements", title: "Requirements Defined", subtitle: "Read the requirements first (objective + must-haves)." },
-      { id: "usecase", title: "Use Case Diagram", subtitle: "Actors and use cases; helps align features with requirements." },
-      { id: "class", title: "Class / DB Diagram", subtitle: "Data model and relationships." },
-      { id: "sequence", title: "Sequence Diagram", subtitle: "Key flows: API requests/responses between actors." },
-    ];
-
-    const focusOptions = [
-      { id: "requirements", title: "Implement from Requirements", hint: "Use requirement list as your primary guide." },
-      { id: "usecase", title: "Implement from Use Cases", hint: "Start with use-case behavior and user journeys." },
-      { id: "class", title: "Implement from Class/DB", hint: "Start with schema and relationships, then build APIs." },
-      { id: "sequence", title: "Implement from Sequence Flow", hint: "Start with request/response interactions and states." },
-    ];
-
-    if (wizard.locked) {
-      const focus = focusOptions.find(o => o.id === wizard.focus);
-      return `
-        <div class="section-title">🔒 Design Locked</div>
-        <div class="section-subtitle">You reviewed all 4 sections, then locked your design focus. You can now implement.</div>
-        <div style="background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.25);border-radius:var(--radius-lg);padding:1.5rem;margin:1rem 0;">
-          <div style="font-weight:800;margin-bottom:0.4rem;">Locked Focus: ${focus ? focus.title : wizard.focus}</div>
-          <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6;">${focus ? focus.hint : ""}</div>
-        </div>
-        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
-          <button class="btn-confirm" onclick="navigate('requirements')">Go to Requirements</button>
-          <button class="btn-ghost" onclick="navigate('progress')">Go to My Progress</button>
-          <button class="btn-ghost" onclick="navigate('leaderboard')">View Leaderboard</button>
-        </div>
-      `;
-    }
-
-    const step = Math.max(0, Math.min(4, wizard.step || 0));
-    const isStepReview = step >= 0 && step <= 3;
-
-    const canGoNext =
-      step === 0 ? wizard.completed.requirements :
-      step === 1 ? wizard.completed.usecase :
-      step === 2 ? wizard.completed.class :
-      step === 3 ? wizard.completed.sequence : false;
-
-    const allReviewed =
-      wizard.completed.requirements &&
-      wizard.completed.usecase &&
-      wizard.completed.class &&
-      wizard.completed.sequence;
-
-    const reviewedCheckbox = (key) => {
-      const checked = !!wizard.completed[key];
-      return `
-        <label style="display:flex;gap:0.6rem;align-items:center;margin:1rem 0;">
-          <input type="checkbox" ${checked ? "checked" : ""} onchange="setDesignReviewed('${key}', this.checked)" style="accent-color:var(--accent-pink);width:16px;height:16px;cursor:pointer;" />
-          <span style="font-size:0.9rem;color:var(--text-muted);">I have reviewed this section in detail.</span>
-        </label>
-      `;
-    };
-
-    const navBack =
-      step > 0
-        ? `<button class="btn-ghost" onclick="goDesignStep(${step - 1})">← Back</button>`
-        : "";
-
-    const navNext =
-      isStepReview
-        ? `<button class="btn-confirm" onclick="goDesignStep(${step + 1})" ${canGoNext ? "" : "disabled"} style="${canGoNext ? "" : "opacity:0.55;cursor:not-allowed;"}">Next →</button>`
-        : "";
-
-    const headerRight = isStepReview
-      ? `<div style="font-family:var(--font-mono);font-size:0.85rem;color:var(--text-muted);">Step ${step + 1} / 5</div>`
-      : `<div style="font-family:var(--font-mono);font-size:0.85rem;color:var(--text-muted);">Pick 1 focus to lock</div>`;
-
-    // Content per step
-    let content = "";
-    if (step === 0) {
-      content = `
-        <div class="req-section">
-          <h3>🎯 Objective</h3>
-          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.7;">${theme.desc}</p>
-        </div>
-        <div class="req-section">
-          <h3>✅ Core Must-Have Features</h3>
-          <p style="font-size:0.82rem;color:var(--error);margin-bottom:1rem;">These drive the implementation scoring.</p>
-          ${theme.must.map(m => `
-            <div class="req-item" style="padding:0.55rem 0.75rem;border-radius:8px;border:1px solid var(--border);background:var(--surface2);margin-bottom:0.5rem;">
-              <span style="color:var(--success);">☑</span>
-              <span>${m}</span>
-            </div>
-          `).join("")}
-        </div>
-      `;
-    } else if (step === 1) {
-      content = `
-        <div class="diagram-card">
-          <div class="diagram-preview" style="padding:1.25rem;">${renderUseCaseDiagram(theme)}</div>
-          <div class="diagram-info">
-            <div class="diagram-title">${stepNames[1].title}</div>
-            <div class="diagram-subtitle">${stepNames[1].subtitle}</div>
+    const handbook = HANDBOOK_DETAILS[theme.id] || {};
+    const detailList = (title, items, icon = "•") => `
+      <div class="req-section">
+        <h3>${title}</h3>
+        ${(items || []).map(it => `
+          <div class="req-item">
+            <span>${icon}</span>
+            <span>${it}</span>
           </div>
-        </div>
-      `;
-    } else if (step === 2) {
-      content = `
-        <div class="diagram-card">
-          <div class="diagram-preview" style="padding:1.25rem;">${renderClassDiagram(theme)}</div>
-          <div class="diagram-info">
-            <div class="diagram-title">${stepNames[2].title}</div>
-            <div class="diagram-subtitle">${stepNames[2].subtitle}</div>
-          </div>
-        </div>
-      `;
-    } else if (step === 3) {
-      content = `
-        <div class="diagram-card">
-          <div class="diagram-preview" style="padding:1.25rem;">${renderSequenceDiagram(theme)}</div>
-          <div class="diagram-info">
-            <div class="diagram-title">${stepNames[3].title}</div>
-            <div class="diagram-subtitle">${stepNames[3].subtitle}</div>
-          </div>
-        </div>
-      `;
-    } else if (step === 4) {
-      content = `
-        <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.18);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:1rem;">
-          <div style="font-weight:800;margin-bottom:0.25rem;">Selection Step</div>
-          <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6;">
-            You reviewed all 4 sections. Click ONE focus below to lock your design. After locking, you cannot go back.
-          </div>
-        </div>
-
-        ${
-          allReviewed
-            ? `
-              <div class="diagram-grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));">
-                ${focusOptions.map(o => `
-                  <div
-                    class="diagram-card"
-                    style="cursor:pointer; ${wizard.focus === o.id ? "border-color:var(--accent-pink);" : ""}"
-                    onclick="lockDesignFocus('${o.id}')"
-                  >
-                    <div class="diagram-preview" style="padding:1.25rem;min-height:160px;">
-                      <div style="display:flex;flex-direction:column;gap:0.35rem;">
-                        <div style="font-weight:900;font-size:1rem;">${o.title}</div>
-                        <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.4;">${o.hint}</div>
-                      </div>
-                    </div>
-                    <div class="diagram-info" style="border-top:1px solid var(--border);">
-                      <div class="diagram-subtitle">Click to lock</div>
-                    </div>
-                  </div>
-                `).join("")}
-              </div>
-            `
-            : `
-              <div style="padding:1rem;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface2);">
-                <div style="font-weight:800;color:var(--warning);margin-bottom:0.25rem;">Almost there</div>
-                <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6;">
-                  Please mark all 4 sections as reviewed before you can lock a focus.
-                </div>
-              </div>
-            `
-        }
-      `;
-    }
+        `).join("")}
+      </div>
+    `;
 
     return `
-      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
-        <span>📐 Design Review Wizard</span>
-        ${headerRight}
-      </div>
-      <div class="section-subtitle">
-        Review requirements + UML diagrams in sequence. Then lock your design focus (one-time) before starting implementation.
-      </div>
-
-      <div class="req-panel" style="margin-top:1rem;">
-        <div class="req-content" style="padding:1.25rem;">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
-            <div>
-              ${
-                isStepReview
-                  ? `<div style="font-weight:900;font-size:1rem;margin-bottom:0.25rem;">${stepNames[step].title}</div>
-                     <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.5;">${stepNames[step].subtitle}</div>`
-                  : `<div style="font-weight:900;font-size:1rem;margin-bottom:0.25rem;">${stepNames[0].title} → Lock Focus</div>`
-              }
-            </div>
-            ${!isStepReview ? "" : reviewedCheckbox(stepNames[step].id)}
+      <div class="section-title">${theme.icon} ${theme.name} — Review Only</div>
+      <div class="section-subtitle">Detailed handbook overview before lock-in. No lock action happens on this page.</div>
+      ${!state.themeConfirmed ? `
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem;">
+          <button class="btn-ghost" onclick="navigate('themes')">← Back to Theme Selection</button>
+          <button class="btn-confirm" onclick="confirmTheme()">🔒 Lock This Theme & Start Timer</button>
+        </div>
+      ` : ""}
+      <div class="req-panel">
+        <div class="req-content">
+          <div class="req-section">
+            <h3>🧩 Problem Statement</h3>
+            <p style="font-size:0.98rem;color:var(--text-muted);line-height:1.7;">${handbook.problem || theme.desc}</p>
           </div>
-
-          ${content}
-
-          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;justify-content:flex-end;margin-top:1.25rem;">
-            ${navBack}
-            ${navNext}
+          <div class="req-section">
+            <h3>🎯 Objective</h3>
+            <p style="font-size:0.98rem;color:var(--text-muted);line-height:1.7;">${handbook.objective || theme.desc}</p>
+          </div>
+          ${detailList("👥 Target Users", handbook.targetUsers, "•")}
+          ${detailList("🎨 UI/UX Expectations", handbook.uiux, "•")}
+          ${detailList("📱 Responsiveness Requirements", handbook.responsive, "•")}
+          ${detailList("⚡ Minimum Interactive Functionality", handbook.interactive, "•")}
+          <div class="req-section">
+            <h3>📄 Day 1 Requirements (${theme.day1Points} pts)</h3>
+            ${theme.day1.map(item => `
+              <div class="req-item">
+                <span>•</span>
+                <span>${item.text}</span>
+                <span class="req-item-pts">${item.pts} pts</span>
+              </div>
+            `).join("")}
+          </div>
+          <div class="req-section">
+            <h3>${state.currentDay >= 2 ? "⚙️ Day 2 Requirements" : "🔒 Day 2 Requirements (Unlocks on Day 2)"} (${theme.day2Points} pts)</h3>
+            ${theme.day2.map(item => `
+              <div class="req-item" style="${state.currentDay >= 2 ? "" : "opacity:0.75;"}">
+                <span>•</span>
+                <span>${item.text}</span>
+                <span class="req-item-pts">${item.pts} pts</span>
+              </div>
+            `).join("")}
+          </div>
+          <div class="req-section">
+            <h3>🗄️ Database Requirements</h3>
+            ${theme.db.map(item => `
+              <div class="req-item"><span>•</span><span>${item}</span></div>
+            `).join("")}
+          </div>
+          <div class="req-section">
+            <h3>✅ Core Must-Haves</h3>
+            ${theme.must.map(item => `
+              <div class="req-item"><span>☑</span><span>${item}</span></div>
+            `).join("")}
+          </div>
+          <div class="req-section">
+            <h3>⭐ Bonus Features (+${theme.bonusPoints} pts)</h3>
+            ${theme.bonus.map(item => `
+              <div class="req-item bonus-item">
+                <span>★</span>
+                <span>${item.text}</span>
+                <span class="req-item-pts">+${item.pts} pts</span>
+              </div>
+            `).join("")}
           </div>
         </div>
       </div>
@@ -1251,7 +1352,7 @@ const CONFIG = {
   function renderAdminPage() {
     return `
       <div class="section-title">⚙️ Admin Panel</div>
-      <div class="section-subtitle">Manage day settings and monitor participants.</div>
+      <div class="section-subtitle">Manage day settings and monitor participants. To release Day 2 requirements, click "⚙️ Day 2 — Backend" below.</div>
       <div class="admin-grid">
         <div class="stat-card">
           <div class="stat-label">Total Participants</div>
@@ -1406,6 +1507,7 @@ const CONFIG = {
   window.logout = logout;
   window.selectTheme = selectTheme;
   window.confirmTheme = confirmTheme;
+  window.reviewTheme = reviewTheme;
   window.closeModal = closeModal;
   window.modalConfirm = modalConfirm;
   window.setReqTab = setReqTab;
