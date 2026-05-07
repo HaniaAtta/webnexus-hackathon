@@ -253,6 +253,7 @@ const CONFIG = {
     timerEl: null,
     timerInterval: null,
     progress: {},
+    designWizard: null,
     toastQueue: [],
   };
   
@@ -301,6 +302,36 @@ const CONFIG = {
     const now = Date.now();
     localStorage.setItem(`wn_timer_${userId}`, now);
     return now;
+  }
+
+  // ===== DESIGN WIZARD (requirements + UML review) =====
+  function defaultDesignWizardState() {
+    return {
+      step: 0, // 0..4 (4 = pick focus & lock)
+      completed: {
+        requirements: false,
+        usecase: false,
+        class: false,
+        sequence: false,
+      },
+      locked: false,
+      focus: null, // one of: requirements|usecase|class|sequence
+    };
+  }
+
+  function getUserDesignWizard(userId) {
+    try {
+      const raw = localStorage.getItem(`wn_design_${userId}`);
+      if (!raw) return defaultDesignWizardState();
+      const parsed = JSON.parse(raw);
+      return { ...defaultDesignWizardState(), ...parsed, completed: { ...defaultDesignWizardState().completed, ...(parsed.completed || {}) } };
+    } catch {
+      return defaultDesignWizardState();
+    }
+  }
+
+  function saveUserDesignWizard(userId, wizardState) {
+    localStorage.setItem(`wn_design_${userId}`, JSON.stringify(wizardState));
   }
   
   // ===== TIMER =====
@@ -464,7 +495,7 @@ const CONFIG = {
       ...(state.themeConfirmed ? [
         { id: "requirements", icon: "📋", label: "Requirements" },
         { id: "progress", icon: "📊", label: "My Progress" },
-        { id: "diagrams", icon: "📐", label: "Diagrams" },
+        { id: "diagrams", icon: "📐", label: "Design Review" },
       ] : []),
       { id: "leaderboard", icon: "🏆", label: "Leaderboard" },
       ...(isAdmin ? [{ id: "admin", icon: "⚙️", label: "Admin" }] : []),
@@ -801,7 +832,26 @@ const CONFIG = {
   
   // ===== LEADERBOARD PAGE =====
   function renderLeaderboardPage() {
-    const sorted = [...LEADERBOARD].sort((a, b) => b.pts - a.pts);
+    // Compute leaderboard dynamically from each user's saved theme + progress.
+    // (Keeps it in sync with the rest of the UI during testing.)
+    const entries = USERS_DB.filter(u => u.role !== "admin").map(u => {
+      const themeId = getUserTheme(u.id);
+      const theme = THEMES.find(t => t.id === themeId);
+
+      const p1 = theme ? calcProgress(u.id, theme.id, 1) : { pts: 0, total: 0 };
+      const p2 = theme ? calcProgress(u.id, theme.id, 2) : { pts: 0, total: 0 };
+
+      const pts = (p1.pts || 0) + (p2.pts || 0);
+      const total = (p1.total || 0) + (p2.total || 0);
+      const pct = total > 0 ? Math.round((pts / total) * 100) : 0;
+
+      // Used only as display text; it's not a scoring rule.
+      const day = p2.pts > 0 ? 2 : 1;
+
+      return { id: u.id, name: u.name, theme: themeId, pts, pct, day };
+    });
+
+    const sorted = entries.sort((a, b) => b.pts - a.pts);
     const rankColors = ["gold", "silver", "bronze"];
     const medals = ["🥇", "🥈", "🥉"];
     return `
@@ -846,38 +896,261 @@ const CONFIG = {
   // ===== DIAGRAMS PAGE =====
   function renderDiagramsPage() {
     const theme = THEMES.find(t => t.id === state.selectedTheme);
-    const diagrams = [
-      {
-        title: "Use Case Diagram",
-        subtitle: "Actors, use cases, and relationships",
-        svg: renderUseCaseDiagram(theme),
-      },
-      {
-        title: "Class Diagram",
-        subtitle: "Database tables and relationships",
-        svg: renderClassDiagram(theme),
-      },
-      {
-        title: "Sequence Diagram",
-        subtitle: "Login & key feature flow",
-        svg: renderSequenceDiagram(theme),
-      },
+    if (!theme || !state.user) return `<div>No theme selected.</div>`;
+
+    const wizard = state.designWizard || getUserDesignWizard(state.user.id);
+    state.designWizard = wizard;
+
+    const stepNames = [
+      { id: "requirements", title: "Requirements Defined", subtitle: "Read the requirements first (objective + must-haves)." },
+      { id: "usecase", title: "Use Case Diagram", subtitle: "Actors and use cases; helps align features with requirements." },
+      { id: "class", title: "Class / DB Diagram", subtitle: "Data model and relationships." },
+      { id: "sequence", title: "Sequence Diagram", subtitle: "Key flows: API requests/responses between actors." },
     ];
-    return `
-      <div class="section-title">📐 UML Diagrams</div>
-      <div class="section-subtitle">Reference diagrams to help you plan your architecture. Right-click → Save image to download.</div>
-      <div class="diagram-grid">
-        ${diagrams.map(d => `
-          <div class="diagram-card">
-            <div class="diagram-preview">${d.svg}</div>
-            <div class="diagram-info">
-              <div class="diagram-title">${d.title}</div>
-              <div class="diagram-subtitle">${d.subtitle}</div>
+
+    const focusOptions = [
+      { id: "requirements", title: "Implement from Requirements", hint: "Use requirement list as your primary guide." },
+      { id: "usecase", title: "Implement from Use Cases", hint: "Start with use-case behavior and user journeys." },
+      { id: "class", title: "Implement from Class/DB", hint: "Start with schema and relationships, then build APIs." },
+      { id: "sequence", title: "Implement from Sequence Flow", hint: "Start with request/response interactions and states." },
+    ];
+
+    if (wizard.locked) {
+      const focus = focusOptions.find(o => o.id === wizard.focus);
+      return `
+        <div class="section-title">🔒 Design Locked</div>
+        <div class="section-subtitle">You reviewed all 4 sections, then locked your design focus. You can now implement.</div>
+        <div style="background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.25);border-radius:var(--radius-lg);padding:1.5rem;margin:1rem 0;">
+          <div style="font-weight:800;margin-bottom:0.4rem;">Locked Focus: ${focus ? focus.title : wizard.focus}</div>
+          <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6;">${focus ? focus.hint : ""}</div>
+        </div>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <button class="btn-confirm" onclick="navigate('requirements')">Go to Requirements</button>
+          <button class="btn-ghost" onclick="navigate('progress')">Go to My Progress</button>
+          <button class="btn-ghost" onclick="navigate('leaderboard')">View Leaderboard</button>
+        </div>
+      `;
+    }
+
+    const step = Math.max(0, Math.min(4, wizard.step || 0));
+    const isStepReview = step >= 0 && step <= 3;
+
+    const canGoNext =
+      step === 0 ? wizard.completed.requirements :
+      step === 1 ? wizard.completed.usecase :
+      step === 2 ? wizard.completed.class :
+      step === 3 ? wizard.completed.sequence : false;
+
+    const allReviewed =
+      wizard.completed.requirements &&
+      wizard.completed.usecase &&
+      wizard.completed.class &&
+      wizard.completed.sequence;
+
+    const reviewedCheckbox = (key) => {
+      const checked = !!wizard.completed[key];
+      return `
+        <label style="display:flex;gap:0.6rem;align-items:center;margin:1rem 0;">
+          <input type="checkbox" ${checked ? "checked" : ""} onchange="setDesignReviewed('${key}', this.checked)" style="accent-color:var(--accent-pink);width:16px;height:16px;cursor:pointer;" />
+          <span style="font-size:0.9rem;color:var(--text-muted);">I have reviewed this section in detail.</span>
+        </label>
+      `;
+    };
+
+    const navBack =
+      step > 0
+        ? `<button class="btn-ghost" onclick="goDesignStep(${step - 1})">← Back</button>`
+        : "";
+
+    const navNext =
+      isStepReview
+        ? `<button class="btn-confirm" onclick="goDesignStep(${step + 1})" ${canGoNext ? "" : "disabled"} style="${canGoNext ? "" : "opacity:0.55;cursor:not-allowed;"}">Next →</button>`
+        : "";
+
+    const headerRight = isStepReview
+      ? `<div style="font-family:var(--font-mono);font-size:0.85rem;color:var(--text-muted);">Step ${step + 1} / 5</div>`
+      : `<div style="font-family:var(--font-mono);font-size:0.85rem;color:var(--text-muted);">Pick 1 focus to lock</div>`;
+
+    // Content per step
+    let content = "";
+    if (step === 0) {
+      content = `
+        <div class="req-section">
+          <h3>🎯 Objective</h3>
+          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.7;">${theme.desc}</p>
+        </div>
+        <div class="req-section">
+          <h3>✅ Core Must-Have Features</h3>
+          <p style="font-size:0.82rem;color:var(--error);margin-bottom:1rem;">These drive the implementation scoring.</p>
+          ${theme.must.map(m => `
+            <div class="req-item" style="padding:0.55rem 0.75rem;border-radius:8px;border:1px solid var(--border);background:var(--surface2);margin-bottom:0.5rem;">
+              <span style="color:var(--success);">☑</span>
+              <span>${m}</span>
             </div>
+          `).join("")}
+        </div>
+      `;
+    } else if (step === 1) {
+      content = `
+        <div class="diagram-card">
+          <div class="diagram-preview" style="padding:1.25rem;">${renderUseCaseDiagram(theme)}</div>
+          <div class="diagram-info">
+            <div class="diagram-title">${stepNames[1].title}</div>
+            <div class="diagram-subtitle">${stepNames[1].subtitle}</div>
           </div>
-        `).join('')}
+        </div>
+      `;
+    } else if (step === 2) {
+      content = `
+        <div class="diagram-card">
+          <div class="diagram-preview" style="padding:1.25rem;">${renderClassDiagram(theme)}</div>
+          <div class="diagram-info">
+            <div class="diagram-title">${stepNames[2].title}</div>
+            <div class="diagram-subtitle">${stepNames[2].subtitle}</div>
+          </div>
+        </div>
+      `;
+    } else if (step === 3) {
+      content = `
+        <div class="diagram-card">
+          <div class="diagram-preview" style="padding:1.25rem;">${renderSequenceDiagram(theme)}</div>
+          <div class="diagram-info">
+            <div class="diagram-title">${stepNames[3].title}</div>
+            <div class="diagram-subtitle">${stepNames[3].subtitle}</div>
+          </div>
+        </div>
+      `;
+    } else if (step === 4) {
+      content = `
+        <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.18);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:1rem;">
+          <div style="font-weight:800;margin-bottom:0.25rem;">Selection Step</div>
+          <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6;">
+            You reviewed all 4 sections. Click ONE focus below to lock your design. After locking, you cannot go back.
+          </div>
+        </div>
+
+        ${
+          allReviewed
+            ? `
+              <div class="diagram-grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));">
+                ${focusOptions.map(o => `
+                  <div
+                    class="diagram-card"
+                    style="cursor:pointer; ${wizard.focus === o.id ? "border-color:var(--accent-pink);" : ""}"
+                    onclick="lockDesignFocus('${o.id}')"
+                  >
+                    <div class="diagram-preview" style="padding:1.25rem;min-height:160px;">
+                      <div style="display:flex;flex-direction:column;gap:0.35rem;">
+                        <div style="font-weight:900;font-size:1rem;">${o.title}</div>
+                        <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.4;">${o.hint}</div>
+                      </div>
+                    </div>
+                    <div class="diagram-info" style="border-top:1px solid var(--border);">
+                      <div class="diagram-subtitle">Click to lock</div>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : `
+              <div style="padding:1rem;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface2);">
+                <div style="font-weight:800;color:var(--warning);margin-bottom:0.25rem;">Almost there</div>
+                <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6;">
+                  Please mark all 4 sections as reviewed before you can lock a focus.
+                </div>
+              </div>
+            `
+        }
+      `;
+    }
+
+    return `
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+        <span>📐 Design Review Wizard</span>
+        ${headerRight}
+      </div>
+      <div class="section-subtitle">
+        Review requirements + UML diagrams in sequence. Then lock your design focus (one-time) before starting implementation.
+      </div>
+
+      <div class="req-panel" style="margin-top:1rem;">
+        <div class="req-content" style="padding:1.25rem;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+            <div>
+              ${
+                isStepReview
+                  ? `<div style="font-weight:900;font-size:1rem;margin-bottom:0.25rem;">${stepNames[step].title}</div>
+                     <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.5;">${stepNames[step].subtitle}</div>`
+                  : `<div style="font-weight:900;font-size:1rem;margin-bottom:0.25rem;">${stepNames[0].title} → Lock Focus</div>`
+              }
+            </div>
+            ${!isStepReview ? "" : reviewedCheckbox(stepNames[step].id)}
+          </div>
+
+          ${content}
+
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;justify-content:flex-end;margin-top:1.25rem;">
+            ${navBack}
+            ${navNext}
+          </div>
+        </div>
       </div>
     `;
+  }
+
+  function setDesignReviewed(sectionKey, checked) {
+    if (!state.user) return;
+    const wizard = state.designWizard || getUserDesignWizard(state.user.id);
+    wizard.completed[sectionKey] = !!checked;
+    saveUserDesignWizard(state.user.id, wizard);
+    state.designWizard = wizard;
+    render();
+  }
+
+  function goDesignStep(nextStep) {
+    if (!state.user) return;
+    const wizard = state.designWizard || getUserDesignWizard(state.user.id);
+    if (wizard.locked) return;
+
+    const step = Math.max(0, Math.min(4, nextStep));
+
+    // If moving forward, require the current step to be reviewed.
+    if (step > wizard.step) {
+      if (wizard.step === 0 && !wizard.completed.requirements) return;
+      if (wizard.step === 1 && !wizard.completed.usecase) return;
+      if (wizard.step === 2 && !wizard.completed.class) return;
+      if (wizard.step === 3 && !wizard.completed.sequence) return;
+    }
+
+    wizard.step = step;
+    saveUserDesignWizard(state.user.id, wizard);
+    state.designWizard = wizard;
+    render();
+  }
+
+  function lockDesignFocus(focusId) {
+    if (!state.user) return;
+    const wizard = state.designWizard || getUserDesignWizard(state.user.id);
+    if (wizard.locked) return;
+
+    const allReviewed =
+      wizard.completed.requirements &&
+      wizard.completed.usecase &&
+      wizard.completed.class &&
+      wizard.completed.sequence;
+
+    if (!allReviewed) {
+      toast("Review all 4 sections before locking focus.", "warning");
+      return;
+    }
+
+    wizard.locked = true;
+    wizard.focus = focusId;
+    wizard.step = 4;
+    saveUserDesignWizard(state.user.id, wizard);
+    state.designWizard = wizard;
+    toast("Design focus locked. You can't go back.", "success");
+    render();
   }
   
   function renderUseCaseDiagram(theme) {
@@ -1019,6 +1292,13 @@ const CONFIG = {
           `;
         }).join('')}
       </div>
+      <div class="section-title" style="font-size:1rem;margin:1.25rem 0 0.75rem;">Testing Data</div>
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
+        <button class="btn-ghost" onclick="clearTestingData()">🧹 Clear Local Progress Data</button>
+        <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.5;">
+          Removes saved themes/progress/design review for all users in this browser.
+        </div>
+      </div>
     `;
   }
   
@@ -1027,6 +1307,43 @@ const CONFIG = {
     localStorage.setItem("wn_current_day", day);
     toast(`Switched to Day ${day}. Requirements updated.`, "success");
     render();
+  }
+
+  function clearTestingData() {
+    if (!state.user) return;
+    showModal(
+      "🧹 Clear Testing Data?",
+      "This removes saved themes/progress/design review + timer day settings for all users in this browser. It does NOT delete the logged-in user session.",
+      () => {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k) continue;
+          if (
+            k.startsWith("wn_progress_") ||
+            k.startsWith("wn_theme_") ||
+            k.startsWith("wn_timer_") ||
+            k.startsWith("wn_design_") ||
+            k === "wn_current_day"
+          ) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        localStorage.setItem("wn_current_day", 1);
+
+        // Reset in-memory state for the current user.
+        state.progress = {};
+        state.designWizard = getUserDesignWizard(state.user.id);
+        state.currentDay = 1;
+        state.selectedTheme = null;
+        state.themeConfirmed = false;
+        state.currentPage = "themes";
+
+        toast("Testing data cleared.", "success");
+        render();
+      }
+    );
   }
   
   // ===== MODAL =====
@@ -1071,9 +1388,18 @@ const CONFIG = {
       const savedTheme = getUserTheme(stored.id);
       if (savedTheme) { state.selectedTheme = savedTheme; state.themeConfirmed = true; }
       state.progress = getUserProgress(stored.id);
+      state.designWizard = getUserDesignWizard(stored.id);
       state.currentPage = "overview";
     }
     render();
+
+    // Keep "Day 2" unlock in sync across tabs/windows.
+    window.addEventListener("storage", (e) => {
+      if (e.key !== "wn_current_day") return;
+      if (!state.user) return;
+      state.currentDay = parseInt(e.newValue || "1");
+      render();
+    });
   }
   
   window.navigate = navigate;
@@ -1086,5 +1412,9 @@ const CONFIG = {
   window.toggleProgress = toggleProgress;
   window.toast = toast;
   window.setDay = setDay;
+  window.setDesignReviewed = setDesignReviewed;
+  window.goDesignStep = goDesignStep;
+  window.lockDesignFocus = lockDesignFocus;
+  window.clearTestingData = clearTestingData;
   
   init();
