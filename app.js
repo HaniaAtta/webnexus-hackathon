@@ -556,6 +556,7 @@ const CONFIG = {
               memberNames: t.member_names || [],
               teamPoints,
               pct,
+              progressMap: (t.progress && typeof t.progress === "object") ? t.progress : {},
               isMyTeam: state.user?.team_name ? t.team_key === state.user.team_name : false,
             };
           });
@@ -797,6 +798,20 @@ const CONFIG = {
       <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.2);border-radius:var(--radius);padding:1.25rem;margin-bottom:2rem;" class="scroll-reveal">
         <strong>⚠️ Action Required:</strong> You must select a theme before starting the competition. <button onclick="navigate('themes')" style="color:var(--accent-pink);font-weight:700;text-decoration:underline;background:none;border:none;cursor:pointer;">Choose your theme →</button>
       </div>` : ''}
+      ${state.themeConfirmed && theme ? `
+      <div style="background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.2);border-radius:var(--radius);padding:1.25rem;margin-bottom:2rem;" class="scroll-reveal">
+        <div style="font-weight:800;color:var(--success);margin-bottom:0.6rem;">✅ Must-Have Requirements — ${theme.name}</div>
+        <div style="font-size:0.84rem;color:var(--error);margin-bottom:0.65rem;">⚠️ Omitting any of these will result in a scoring penalty from judges.</div>
+        <div style="display:flex;flex-direction:column;gap:0.35rem;max-height:220px;overflow-y:auto;padding-right:0.25rem;">
+          ${theme.must.map(m => `
+            <div style="display:flex;gap:0.5rem;align-items:flex-start;font-size:0.85rem;line-height:1.5;">
+              <span style="color:var(--success);flex-shrink:0;">☑</span>
+              <span>${m}</span>
+            </div>
+          `).join('')}
+        </div>
+        <button onclick="navigate('requirements')" style="margin-top:0.9rem;color:var(--accent-blue);font-weight:700;font-size:0.84rem;background:none;border:none;cursor:pointer;text-decoration:underline;">View full requirements →</button>
+      </div>` : ''}
       <div class="section-title scroll-reveal">Competition Timeline</div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;" class="scroll-reveal delay-1">
         ${['Day 1 — Frontend Sprint', 'Day 2 — Backend + Integration'].map((d, i) => `
@@ -981,6 +996,14 @@ const CONFIG = {
           </div>
           <div style="font-family:var(--font-mono);font-size:0.88rem;color:var(--accent-teal);font-weight:700;">${totalDone}/${totalItems} done · ${p1.pts} pts</div>
         </div>
+
+        <!-- Must-Have Requirements quick-view -->
+        <div style="margin-top:1rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+          <button onclick="openMustHaveModal('${theme.id}')" style="display:flex;align-items:center;gap:0.45rem;padding:0.45rem 0.9rem;border-radius:999px;font-size:0.82rem;font-weight:700;border:1.5px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.07);color:var(--success);cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(74,222,128,0.14)'" onmouseout="this.style.background='rgba(74,222,128,0.07)'">
+            ✅ View Must-Have Requirements (${theme.must.length})
+          </button>
+          <span style="font-size:0.78rem;color:var(--text-muted);">⚠️ Omitting any must-have incurs a scoring penalty</span>
+        </div>
       </div>
 
       <div class="req-panel scroll-reveal delay-2">
@@ -994,6 +1017,31 @@ const CONFIG = {
     `;
   }
   
+  function openMustHaveModal(themeId) {
+    const theme = THEMES.find(t => t.id === themeId);
+    if (!theme) return;
+    const overlay = document.getElementById("modal-overlay");
+    if (!overlay) return;
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:560px;max-height:80vh;display:flex;flex-direction:column;">
+        <h3 style="margin-bottom:0.4rem;">✅ Must-Have Requirements</h3>
+        <p style="font-size:0.88rem;color:var(--error);margin-bottom:0.85rem;">⚠️ Omitting any of these will result in a significant scoring penalty.</p>
+        <div style="overflow-y:auto;flex:1;padding-right:0.25rem;display:flex;flex-direction:column;gap:0.5rem;">
+          ${theme.must.map((m, i) => `
+            <div style="display:flex;align-items:flex-start;gap:0.6rem;padding:0.65rem 0.8rem;background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.18);border-radius:8px;">
+              <span style="color:var(--success);font-size:1rem;flex-shrink:0;margin-top:0.05rem;">☑</span>
+              <span style="font-size:0.88rem;line-height:1.55;">${m}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div class="modal-actions" style="margin-top:1rem;">
+          <button class="btn-confirm" onclick="closeModal()">Got it</button>
+        </div>
+      </div>
+    `;
+    overlay.classList.add("open");
+  }
+
   function setReqTab(tab) {
     state.reqTab = tab;
     render();
@@ -1021,6 +1069,15 @@ const CONFIG = {
         <div class="req-section">
           <h3>🎯 Objective</h3>
           <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.7;">${theme.desc}</p>
+        </div>
+        <div class="req-section">
+          <h3>✅ Must-Have Requirements <span style="font-size:0.78rem;font-weight:500;color:var(--error);">— omitting any incurs a scoring penalty</span></h3>
+          ${theme.must.map(m => `
+            <div class="req-item">
+              <span style="color:var(--success);">☑</span>
+              <span>${m}</span>
+            </div>
+          `).join('')}
         </div>
         <div class="req-section">
           <h3>🎨 UI/UX + Responsiveness Checklist</h3>
@@ -1495,9 +1552,33 @@ const CONFIG = {
   }
   
   // ===== LEADERBOARD PAGE =====
+  // Computes per-day progress for a team using the same calcProgress logic.
+  // For the leaderboard we use the team's stored progress map (from the API).
+  function calcProgressFromMap(progressMap, themeId, day) {
+    const theme = THEMES.find(t => t.id === themeId);
+    if (!theme) return { pct: 0, pts: 0, total: 0, done: 0, totalItems: 0 };
+    const items = day === 1 ? theme.day1 : theme.day2;
+    let done = 0, pts = 0, total = 0;
+    items.forEach((item, i) => {
+      total += item.pts;
+      const key = `${themeId}_day${day}_${i}`;
+      if (progressMap && progressMap[key]) { done++; pts += item.pts; }
+    });
+    const pct = total > 0 ? Math.round((pts / total) * 100) : 0;
+    return { pct, pts, total, done, totalItems: items.length };
+  }
+
   function renderLeaderboardPage() {
-    const teamsSorted = (state.lbTeams || []).slice();
+    const rawTeams = (state.lbTeams || []).slice();
     const lbFilter = state.lbTeamFilter || "all";
+    const lbDay = state.lbDay || 1; // Day tab: 1 or 2
+
+    // Re-score teams using calcProgressFromMap for the selected day
+    const teamsSorted = rawTeams.map(team => {
+      const p = calcProgressFromMap(team.progressMap || {}, team.themeId, lbDay);
+      return { ...team, dayPts: p.pts, dayPct: p.pct, dayDone: p.done, dayTotal: p.totalItems, dayTotalPts: p.total };
+    }).sort((a, b) => b.dayPts - a.dayPts);
+
     const visibleTeams = lbFilter === "all" ? teamsSorted : teamsSorted.filter(t => t.teamKey === lbFilter);
 
     const teamOptions = [
@@ -1517,17 +1598,16 @@ const CONFIG = {
 
     // Podium — only show when viewing all and there are teams
     const podiumHtml = (lbFilter === "all" && top3.length > 0) ? (() => {
-      const podiumOrder = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3; // 2nd, 1st, 3rd for visual podium
+      const podiumOrder = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3;
       const rankOf = (t) => top3.indexOf(t);
       const medals = ['🥇', '🥈', '🥉'];
       const rankClasses = ['rank-2', 'rank-1', 'rank-3'];
-
       return `
         <div class="lb-podium scroll-reveal delay-1">
           ${podiumOrder.map((team, podiumIdx) => {
             if (!team) return '';
             const theme = THEMES.find(t => t.id === team.themeId);
-            const rank = rankOf(team); // 0=1st, 1=2nd, 2=3rd
+            const rank = rankOf(team);
             const rankClass = rankClasses[podiumIdx];
             const medal = medals[rank];
             const isMeTeam = meUserId && team.isMyTeam;
@@ -1536,8 +1616,8 @@ const CONFIG = {
                 <div class="lb-podium-medal">${medal}</div>
                 <div class="lb-podium-name">${team.teamKey}${isMeTeam ? ' <span style="color:var(--accent-pink);font-size:0.7rem;">(you)</span>' : ''}</div>
                 <div class="lb-podium-theme">${theme ? `${theme.icon} ${theme.name}` : '—'}</div>
-                <div class="lb-podium-pts">${team.teamPoints}</div>
-                <div class="lb-podium-pts-label">points</div>
+                <div class="lb-podium-pts">${team.dayPts}</div>
+                <div class="lb-podium-pts-label">pts · ${team.dayDone}/${team.dayTotal} reqs</div>
               </div>
             `;
           }).join('')}
@@ -1552,6 +1632,15 @@ const CONFIG = {
       <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.15);border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1.25rem;" class="scroll-reveal delay-2">
         <div style="font-weight:900;color:var(--accent-white);margin-bottom:0.25rem;">⚖️ Final evaluation is done by judges.</div>
         <div style="color:var(--text-muted);font-size:0.9rem;">This leaderboard reflects self-reported progress only — scoring may differ after judging.</div>
+      </div>
+
+      <!-- Day selector tabs -->
+      <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;" class="scroll-reveal delay-2">
+        ${[1,2].map(d => `
+          <button onclick="setLbDay(${d})" style="padding:0.5rem 1.1rem;border-radius:999px;font-weight:700;font-size:0.85rem;border:1.5px solid ${lbDay===d?'var(--accent-pink)':'var(--border)'};background:${lbDay===d?'rgba(232,121,249,0.12)':'var(--surface2)'};color:${lbDay===d?'var(--accent-pink)':'var(--text-muted)'};cursor:pointer;transition:all 0.15s;">
+            ${d === 1 ? '📄 Day 1 — Frontend Sprint' : '⚙️ Day 2 — Backend + Integration'}
+          </button>
+        `).join('')}
       </div>
 
       ${podiumHtml}
@@ -1576,11 +1665,12 @@ const CONFIG = {
       })() : ""}
 
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;" class="scroll-reveal delay-4">
-        <div class="leaderboard-table" style="min-width:560px;">
-          <div class="lb-header">
+        <div class="leaderboard-table" style="min-width:620px;">
+          <div class="lb-header" style="grid-template-columns:56px 1fr 1fr auto auto auto;">
             <div>Rank</div>
             <div>Team</div>
             <div>Members</div>
+            <div>Reqs Done</div>
             <div>Points</div>
             <div>Progress</div>
           </div>
@@ -1597,7 +1687,7 @@ const CONFIG = {
               const rowRankClass = i === 0 ? "lb-row-rank1" : i === 1 ? "lb-row-rank2" : i === 2 ? "lb-row-rank3" : "";
               const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i+1}`;
               return `
-                <div class="lb-row ${rowRankClass} ${isMeTeam ? 'current-user' : ''}" style="animation-delay:${i * 0.06}s;">
+                <div class="lb-row ${rowRankClass} ${isMeTeam ? 'current-user' : ''}" style="animation-delay:${i * 0.06}s;grid-template-columns:56px 1fr 1fr auto auto auto;">
                   <div class="lb-rank">
                     <div class="lb-rank-badge ${rankClass}">${medal}</div>
                   </div>
@@ -1606,10 +1696,14 @@ const CONFIG = {
                     <div class="lb-theme" style="margin-top:0.2rem;">${theme ? `${theme.icon} ${theme.name}` : "Theme not selected"}</div>
                   </div>
                   <div class="lb-theme" style="font-size:0.85rem;color:var(--text-muted);align-self:center;">${memberText || "—"}</div>
-                  <div class="lb-pts" style="align-self:center;">${team.teamPoints} <span style="font-size:0.72rem;color:var(--text-muted);font-weight:500;">pts</span></div>
+                  <div style="align-self:center;text-align:center;">
+                    <div style="font-family:var(--font-mono);font-weight:800;font-size:1rem;color:var(--accent-teal);">${team.dayDone}<span style="color:var(--text-muted);font-size:0.75rem;font-weight:500;">/${team.dayTotal}</span></div>
+                    <div style="font-size:0.68rem;color:var(--text-muted);">requirements</div>
+                  </div>
+                  <div class="lb-pts" style="align-self:center;">${team.dayPts} <span style="font-size:0.72rem;color:var(--text-muted);font-weight:500;">pts</span></div>
                   <div class="lb-progress" style="align-self:center;">
-                    <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.pct}%"></div></div>
-                    <div class="lb-pct">${team.pct}%</div>
+                    <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.dayPct}%"></div></div>
+                    <div class="lb-pct">${team.dayPct}%</div>
                   </div>
                 </div>
               `;
@@ -1622,6 +1716,11 @@ const CONFIG = {
 
   function setLbTeamFilter(teamKey) {
     state.lbTeamFilter = teamKey;
+    render();
+  }
+
+  function setLbDay(day) {
+    state.lbDay = day;
     render();
   }
   
@@ -2411,6 +2510,8 @@ function renderUseCaseDiagram(theme) {
   window.lockDesignFocus = lockDesignFocus;
   window.clearTestingData = clearTestingData;
   window.setLbTeamFilter = setLbTeamFilter;
+  window.setLbDay = setLbDay;
+  window.openMustHaveModal = openMustHaveModal;
   window.openDiagramModal = openDiagramModal;
   window.toggleSidebar = toggleSidebar;
   window.closeSidebarOnMobile = closeSidebarOnMobile;
