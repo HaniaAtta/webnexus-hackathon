@@ -14,6 +14,7 @@ const CONFIG = {
   // Format: { username: "firstname_lastname", password: "phonenumber" }
   const USERS_DB = [
     { id: 1, username: "admin", password: "admin123", role: "admin", name: "Admin" },
+    { id: 7, username: "hania_atta", password: "03314870905", role: "admin", name: "Hania Atta" },
     { id: 2, username: "ali_hassan", password: "03001234567", role: "participant", name: "Ali Hassan" },
     { id: 3, username: "sara_khan", password: "03211234567", role: "participant", name: "Sara Khan" },
     { id: 4, username: "usman_malik", password: "03331234567", role: "participant", name: "Usman Malik" },
@@ -701,13 +702,12 @@ const CONFIG = {
     const isAdmin = state.user.role === "admin";
     const items = [
       { id: "overview", icon: "🏠", label: "Overview" },
-      { id: "themes", icon: "🎯", label: "Themes" },
-      ...(state.themeConfirmed ? [
+      ...(isAdmin ? [] : [{ id: "themes", icon: "🎯", label: "Themes" }]),
+      ...(!isAdmin && state.themeConfirmed ? [
         { id: "requirements", icon: "📋", label: "Requirements" },
         { id: "progress", icon: "📊", label: "My Progress" },
         { id: "diagrams", icon: "📐", label: "Design Review" },
       ] : []),
-      { id: "leaderboard", icon: "🏆", label: "Leaderboard" },
       ...(isAdmin ? [{ id: "admin", icon: "⚙️", label: "Admin" }] : []),
     ];
     return `
@@ -731,7 +731,7 @@ const CONFIG = {
       case "requirements": return state.themeConfirmed ? renderRequirementsPage() : renderThemesPage();
       case "progress": return state.themeConfirmed ? renderProgressPage() : renderThemesPage();
       case "diagrams": return state.themeConfirmed ? renderDiagramsPage() : renderThemesPage();
-      case "leaderboard": return renderLeaderboardPage();
+      case "leaderboard": return state.user.role === "admin" ? renderLeaderboardPage() : renderOverviewPage();
       case "admin": return state.user.role === "admin" ? renderAdminPage() : renderOverviewPage();
       default: return renderOverviewPage();
     }
@@ -2140,7 +2140,7 @@ function renderUseCaseDiagram(theme) {
 
   // ===== ADMIN PAGE =====
   function renderAdminPage() {
-    // Fetch live data if not loaded yet
+    // Fetch live leaderboard data if not loaded yet
     if (!state.adminTeams) {
       state.adminTeams = [];
       (async () => {
@@ -2151,13 +2151,31 @@ function renderUseCaseDiagram(theme) {
         } catch (e) { toast("Failed to load participant data.", "warning"); }
       })();
     }
-  
+
     const teams = state.adminTeams || [];
     const totalMembers = teams.reduce((s, t) => s + (t.members_count || 0), 0);
-  
+
+    // Build leaderboard rows using live progress from API
+    const lbDay = state.adminLbDay || 1;
+    const lbTeamsScored = teams.map(t => {
+      const th = THEMES.find(th => th.id === t.theme_id);
+      const progressMap = (t.progress_map && typeof t.progress_map === "object") ? t.progress_map :
+                          (t.progressMap && typeof t.progressMap === "object") ? t.progressMap :
+                          (t.progress && typeof t.progress === "object") ? t.progress : {};
+      let pts = 0;
+      const items = th ? (lbDay === 1 ? th.day1 : th.day2) : [];
+      items.forEach((item, i) => {
+        const key = th.id + "_day" + lbDay + "_" + i;
+        if (progressMap[key]) pts += item.pts;
+      });
+      const total = items.reduce((s, it) => s + it.pts, 0);
+      const pct = total > 0 ? Math.round((pts / total) * 100) : 0;
+      return { ...t, dayPts: pts, dayPct: pct };
+    }).sort((a, b) => b.dayPts - a.dayPts);
+
     return `
       <div class="section-title">⚙️ Admin Panel</div>
-      <div class="section-subtitle">Manage day settings and monitor teams. Click "⚙️ Day 2 — Backend" to release Day 2 requirements.</div>
+      <div class="section-subtitle">Manage day unlock and monitor team leaderboard.</div>
       <div class="admin-grid">
         <div class="stat-card">
           <div class="stat-label">Total Participants</div>
@@ -2195,62 +2213,46 @@ function renderUseCaseDiagram(theme) {
         ${state.currentDay === 2 ? `<div style="margin-top:0.75rem;font-size:0.82rem;color:var(--success);">✅ Day 2 is live — all participants can now see backend requirements.</div>` : `<div style="margin-top:0.75rem;font-size:0.82rem;color:var(--text-muted);">Day 2 requirements are hidden from participants until you click Unlock.</div>`}
       </div>
 
-      <div class="section-title" style="font-size:1rem;margin-bottom:0.75rem;">Teams & Progress</div>
+      <!-- Leaderboard inside Admin -->
+      <div class="section-title" style="font-size:1rem;margin-bottom:0.75rem;">🏆 Live Leaderboard</div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+        ${[1,2].map(d => `
+          <button onclick="state.adminLbDay=${d};render();" style="padding:0.45rem 1rem;border-radius:999px;font-weight:700;font-size:0.82rem;border:1.5px solid ${lbDay===d?'var(--accent-pink)':'var(--border)'};background:${lbDay===d?'rgba(232,121,249,0.12)':'var(--surface2)'};color:${lbDay===d?'var(--accent-pink)':'var(--text-muted)'};cursor:pointer;">
+            ${d === 1 ? "📄 Day 1" : "⚙️ Day 2"}
+          </button>
+        `).join("")}
+        <button onclick="state.adminTeams=null;render();" style="padding:0.45rem 1rem;border-radius:999px;font-weight:700;font-size:0.82rem;border:1.5px solid var(--border);background:var(--surface2);color:var(--text-muted);cursor:pointer;margin-left:auto;">🔄 Refresh</button>
+      </div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <div class="leaderboard-table" style="min-width:500px;">
           <div class="lb-header">
-            <div>#</div><div>Team</div><div>Members</div><div>Points</div><div>Progress</div>
+            <div>Rank</div><div>Team</div><div>Members</div><div>Points</div><div>Progress</div>
           </div>
-          ${teams.length === 0 ? `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);">Loading teams...</div>` :
-            teams.map((t, i) => {
+          ${lbTeamsScored.length === 0 ? `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);">Loading teams...</div>` :
+            lbTeamsScored.map((t, i) => {
               const theme = THEMES.find(th => th.id === t.theme_id);
               const memberNames = (t.member_names || []);
               const shown = memberNames.slice(0, 3);
               const rest = memberNames.length - shown.length;
-              const memberText = rest > 0 ? `${shown.join(", ")} +${rest} more` : (shown.join(", ") || "—");
+              const memberText = rest > 0 ? shown.join(", ") + " +" + rest + " more" : (shown.join(", ") || "—");
+              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "#" + (i+1);
               return `
-                <div class="lb-row">
-                  <div style="font-family:var(--font-mono);font-weight:700;">${i+1}</div>
+                <div class="lb-row ${i===0?'lb-row-rank1':i===1?'lb-row-rank2':i===2?'lb-row-rank3':''}">
+                  <div class="lb-rank"><div class="lb-rank-badge ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${medal}</div></div>
                   <div>
                     <div class="lb-name">${t.team_key}</div>
                     <div class="lb-theme">${theme ? theme.icon + ' ' + theme.name : 'No theme'}</div>
                   </div>
-                  <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5;">${memberText}</div>
-                  <div class="lb-pts">${(() => {
-                    // Reconstruct actual points from progress map (same logic as leaderboard page)
-                    const th = THEMES.find(th => th.id === t.theme_id);
-                    if (!th) return (t.team_points || 0);
-                    if (typeof t.team_progress_points === "number") return t.team_progress_points;
-                    if (t.progress && typeof t.progress === "object") {
-                      let pts = 0;
-                      Object.entries(t.progress).forEach(([key, done]) => {
-                        if (!done) return;
-                        const parts = key.split("_");
-                        const idx = parseInt(parts[parts.length - 1]);
-                        const dayPart = parts[parts.length - 2];
-                        if (isNaN(idx)) return;
-                        const dayItems = dayPart === "day1" ? th.day1 : th.day2;
-                        if (dayItems && dayItems[idx]) pts += dayItems[idx].pts;
-                      });
-                      return pts;
-                    }
-                    return (t.team_points || 0);
-                  })()} pts</div>
-                  <div class="lb-progress">
-                    <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${t.completion_pct || 0}%"></div></div>
-                    <div class="lb-pct">${t.completion_pct || 0}%</div>
+                  <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5;align-self:center;">${memberText}</div>
+                  <div class="lb-pts" style="align-self:center;">${t.dayPts} <span style="font-size:0.72rem;color:var(--text-muted);">pts</span></div>
+                  <div class="lb-progress" style="align-self:center;">
+                    <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${t.dayPct}%"></div></div>
+                    <div class="lb-pct">${t.dayPct}%</div>
                   </div>
                 </div>
               `;
             }).join('')
           }
-        </div>
-      </div>
-      <div class="section-title" style="font-size:1rem;margin:1.25rem 0 0.75rem;">Testing Data</div>
-      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
-        <button class="btn-ghost" onclick="clearTestingData()">🧹 Clear My Progress Data</button>
-        <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.5;">
-          Clears your progress in Supabase and resets local state for testing.
         </div>
       </div>
     `;
