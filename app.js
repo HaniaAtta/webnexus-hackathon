@@ -506,6 +506,7 @@ const CONFIG = {
   function navigate(page) {
     if (page === "admin") state.adminTeams = null;
     state.currentPage = page;
+    closeSidebarOnMobile();
     if (page === "leaderboard") {
       (async () => {
         try {
@@ -513,20 +514,38 @@ const CONFIG = {
           const teams = (resp.teams || resp.items || []).map(t => {
             const themeId = t.theme_id || null;
             const theme = THEMES.find(th => th.id === themeId);
-            // Recalculate real pts from THEMES pts values using done key count
+
+            // Use the actual accumulated progress points from the API response.
+            // The API stores progress as a map of { key: true } where each key
+            // encodes themeId + day + itemIndex. We reconstruct real pts by
+            // looking up the item's pts from THEMES data using the progress keys.
             let teamPoints = 0, totalPossible = 0;
             if (theme) {
-              const doneCount = t.team_points || 0; // DB gives us count of true keys
-              // Build ordered items list to map index→pts
               const allItems = [...theme.day1, ...theme.day2];
               totalPossible = allItems.reduce((s, item) => s + item.pts, 0);
-              // We don't have which specific keys are done from leaderboard API
-              // so approximate: assume items done in order (lowest index first)
-              let remaining = doneCount;
-              for (const item of allItems) {
-                if (remaining <= 0) break;
-                teamPoints += item.pts;
-                remaining--;
+
+              // Prefer a pre-computed points value from the API if the server
+              // sends it (e.g. as team_progress_points or team_pts).
+              // Otherwise fall back to reconstructing from the progress map.
+              if (typeof t.team_progress_points === "number") {
+                teamPoints = t.team_progress_points;
+              } else if (t.progress && typeof t.progress === "object") {
+                // progress is a map: { "ai_task_day1_0": true, ... }
+                Object.entries(t.progress).forEach(([key, done]) => {
+                  if (!done) return;
+                  // key format: themeId_dayN_index
+                  const parts = key.split("_");
+                  // last part = index, second-to-last = "dayN", rest = themeId
+                  const idx = parseInt(parts[parts.length - 1]);
+                  const dayPart = parts[parts.length - 2]; // "day1" or "day2"
+                  if (isNaN(idx)) return;
+                  const dayItems = dayPart === "day1" ? theme.day1 : theme.day2;
+                  if (dayItems && dayItems[idx]) teamPoints += dayItems[idx].pts;
+                });
+              } else {
+                // Fallback: if the server only gave us a raw numeric count,
+                // use it directly as points (server should compute correct pts).
+                teamPoints = typeof t.team_points === "number" ? t.team_points : 0;
               }
             }
             const pct = totalPossible > 0 ? Math.round((teamPoints / totalPossible) * 100) : 0;
@@ -561,6 +580,7 @@ const CONFIG = {
     }
     app.innerHTML = `
       ${renderNavbar()}
+      <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleSidebar()"></div>
       <div class="dashboard-layout">
         ${renderSidebar()}
         <main class="main-content page-enter">
@@ -574,6 +594,8 @@ const CONFIG = {
     startTimer(state.user.id);
     attachNavEvents();
     attachPageEvents();
+    // Kick off scroll reveal on next frame so DOM is painted
+    requestAnimationFrame(() => initScrollReveal());
   }
   
   // ===== LOGIN PAGE =====
@@ -669,14 +691,18 @@ const CONFIG = {
     saveUserProgress(state.user.id, state.progress);
   }
   
-  // ===== NAVBAR =====
   function renderNavbar() {
     const theme = THEMES.find(t => t.id === state.selectedTheme);
     return `
       <nav class="navbar">
-        <div class="nav-logo">
-          <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#e879f9,#38bdf8);display:flex;align-items:center;justify-content:center;font-size:1rem;font-family:var(--font-mono);color:white;font-weight:700;">{/}</div>
-          <span class="logo-text">WebNexus</span>
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+          <button class="hamburger-btn" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle navigation" style="display:none;">
+            <span></span><span></span><span></span>
+          </button>
+          <div class="nav-logo">
+            <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#e879f9,#38bdf8);display:flex;align-items:center;justify-content:center;font-size:1rem;font-family:var(--font-mono);color:white;font-weight:700;">{/}</div>
+            <span class="logo-text">WebNexus</span>
+          </div>
         </div>
         <div class="nav-right">
           ${state.themeConfirmed ? `<span class="nav-day-badge">Day ${state.currentDay}</span>` : ''}
@@ -733,7 +759,7 @@ const CONFIG = {
   function renderOverviewPage() {
     const theme = THEMES.find(t => t.id === state.selectedTheme);
     return `
-      <div class="welcome-section">
+      <div class="welcome-section scroll-reveal">
         <h2>Welcome, ${state.user.name}! 👋</h2>
         <p>This is the WebNexus Hackathon Platform for <strong>B-TECH 2026 at BNU</strong>. Choose your theme, review requirements, and track your progress — all in one place.</p>
         <div class="day-info">
@@ -742,33 +768,33 @@ const CONFIG = {
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem;margin-bottom:2rem;">
-        <div class="stat-card">
+        <div class="stat-card scroll-reveal delay-1">
           <div class="stat-label">Current Day</div>
           <div class="stat-value" style="background:var(--gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Day ${state.currentDay}</div>
           <div class="stat-sub">${state.currentDay === 1 ? 'Frontend Sprint' : 'Backend + Integration'}</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card scroll-reveal delay-2">
           <div class="stat-label">Your Theme</div>
           <div class="stat-value" style="font-size:1.5rem;">${theme ? theme.icon : '—'}</div>
           <div class="stat-sub">${theme ? theme.name : 'Not selected'}</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card scroll-reveal delay-3">
           <div class="stat-label">Total Themes</div>
           <div class="stat-value">4</div>
           <div class="stat-sub">Available to choose</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card scroll-reveal delay-4">
           <div class="stat-label">Max Bonus Pts</div>
           <div class="stat-value">${theme ? '+' + theme.bonusPoints : '+55'}</div>
           <div class="stat-sub">Extra leaderboard points</div>
         </div>
       </div>
       ${!state.themeConfirmed ? `
-      <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.2);border-radius:var(--radius);padding:1.25rem;margin-bottom:2rem;">
+      <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.2);border-radius:var(--radius);padding:1.25rem;margin-bottom:2rem;" class="scroll-reveal">
         <strong>⚠️ Action Required:</strong> You must select a theme before starting the competition. <button onclick="navigate('themes')" style="color:var(--accent-pink);font-weight:700;text-decoration:underline;background:none;border:none;cursor:pointer;">Choose your theme →</button>
       </div>` : ''}
-      <div class="section-title">Competition Timeline</div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;">
+      <div class="section-title scroll-reveal">Competition Timeline</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;" class="scroll-reveal delay-1">
         ${['Day 1 — Frontend Sprint', 'Day 2 — Backend + Integration'].map((d, i) => `
           <div style="display:flex;gap:1rem;align-items:flex-start;padding-bottom:${i===0?'1.5rem':'0'};${i===0?'border-bottom:1px solid var(--border);margin-bottom:1.5rem;':''}">
             <div style="width:32px;height:32px;border-radius:50%;background:${state.currentDay===i+1?'var(--gradient)':'var(--surface2)'};display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;flex-shrink:0;">${i+1}</div>
@@ -786,17 +812,17 @@ const CONFIG = {
   // ===== THEMES PAGE =====
   function renderThemesPage() {
     return `
-      <div class="section-title">Choose Your Theme</div>
-      <div class="section-subtitle">Review all themes in detail before locking in. Use Review Only to explore requirements first.</div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;margin-bottom:1.25rem;">
+      <div class="section-title scroll-reveal">Choose Your Theme</div>
+      <div class="section-subtitle scroll-reveal delay-1">Review all themes in detail before locking in. Use Review Only to explore requirements first.</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;margin-bottom:1.25rem;" class="scroll-reveal delay-2">
         <div style="font-weight:800;margin-bottom:0.35rem;">Recommended Flow</div>
         <div style="font-size:0.92rem;color:var(--text-muted);line-height:1.6;">
           1) Select theme → 2) Open Review Only (requirements + design expectations) → 3) Lock theme & start timer.
         </div>
       </div>
       <div class="themes-grid">
-        ${THEMES.map(theme => `
-          <div class="theme-card ${state.selectedTheme === theme.id ? 'selected' : ''}" onclick="selectTheme('${theme.id}')">
+        ${THEMES.map((theme, i) => `
+          <div class="theme-card scroll-reveal delay-${Math.min(i+1,6)} ${state.selectedTheme === theme.id ? 'selected' : ''}" onclick="selectTheme('${theme.id}')">
             <div class="theme-icon">${theme.icon}</div>
             <div class="theme-name">${theme.name}</div>
             <div class="theme-desc">${theme.desc}</div>
@@ -821,7 +847,7 @@ const CONFIG = {
         `).join('')}
       </div>
       ${state.themeConfirmed ? `
-        <div style="background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.2);border-radius:var(--radius);padding:1.25rem;">
+        <div style="background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.2);border-radius:var(--radius);padding:1.25rem;" class="scroll-reveal">
           <strong>✅ Theme locked:</strong> ${THEMES.find(t=>t.id===state.selectedTheme)?.name}. Good luck! <button onclick="navigate('requirements')" style="color:var(--accent-blue);font-weight:700;background:none;border:none;cursor:pointer;text-decoration:underline;">View Requirements →</button>
         </div>
       ` : ''}
@@ -926,15 +952,34 @@ const CONFIG = {
       { id: "must", label: "✅ Must-Have" },
     ];
     const activeTab = state.reqTab || "day1";
+
+    // Calculate overall progress
+    const p1 = calcProgress(state.user.id, theme.id, 1);
+    const totalDone = p1.done;
+    const totalItems = p1.totalItems;
+
     return `
-      <div class="section-title">${theme.icon} ${theme.name}</div>
-      <div class="section-subtitle">Day ${state.currentDay} requirements are shown step-by-step. Mark each one complete to unlock the next.</div>
-      <div style="background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.25);border-radius:var(--radius);padding:0.9rem 1rem;margin-bottom:1rem;">
-        <div style="font-size:0.95rem;line-height:1.6;">
-          <strong>Design expectation:</strong> include <strong>Use Case Model</strong>, <strong>Class Diagram</strong>, and <strong>Sequence Diagram</strong> aligned with requirements and implementation.
+      <div class="section-title scroll-reveal">${theme.icon} ${theme.name}</div>
+
+      <div class="vibe-header scroll-reveal delay-1">
+        <div class="vibe-badge">✦ Vibe Coding Mode</div>
+        <div class="vibe-title">Build freely — requirements are your compass, not your cage.</div>
+        <div class="vibe-sub">
+          These requirements guide your build. You choose <em>how</em> to implement them — be creative, be bold, be you.
+          Work through them one at a time. Each unlocks the next. Can't go back — only forward. 🚀
+        </div>
+        <div style="margin-top:0.9rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <div style="font-size:0.85rem;color:var(--text-muted);">Day ${state.currentDay} progress:</div>
+          <div style="flex:1;min-width:120px;max-width:260px;">
+            <div class="progress-bar-wrap" style="height:7px;margin-bottom:0;">
+              <div class="progress-bar-fill" style="width:${p1.pct}%"></div>
+            </div>
+          </div>
+          <div style="font-family:var(--font-mono);font-size:0.88rem;color:var(--accent-teal);font-weight:700;">${totalDone}/${totalItems} done · ${p1.pts} pts</div>
         </div>
       </div>
-      <div class="req-panel">
+
+      <div class="req-panel scroll-reveal delay-2">
         <div class="req-tabs">
           ${tabs.map(tab => `<div class="req-tab ${activeTab === tab.id ? 'active' : ''} ${tab.locked ? 'locked' : ''}" onclick="${tab.locked ? 'toast(\'Day 2 requirements unlock on Day 2!\', \'warning\')' : `setReqTab('${tab.id}')`}">${tab.label}</div>`).join('')}
         </div>
@@ -957,8 +1002,13 @@ const CONFIG = {
   }
 
   function handleReqStepToggle(key, tab, nextIndex, checked) {
-    toggleProgress(key, checked);
-    if (checked) setReqFocus(tab, nextIndex);
+    if (!checked) return; // Only forward, never unchecked
+    toggleProgress(key, true);
+    // After completing, advance focus to the next incomplete item
+    const newCursor = nextIndex;
+    if (!state.reqFocusIndexByTab) state.reqFocusIndexByTab = { day1: 0, day2: 0 };
+    state.reqFocusIndexByTab[tab] = newCursor;
+    render();
   }
 
   function renderReqTab(theme, tab, handbook = {}) {
@@ -1044,90 +1094,113 @@ const CONFIG = {
       const doneFlags = keys.map(k => !!progress[k]);
       const firstIncompleteIndex = doneFlags.findIndex(d => !d);
       const completedCount = doneFlags.filter(Boolean).length;
-      const defaultCursor = firstIncompleteIndex === -1 ? items.length - 1 : firstIncompleteIndex;
-      const requestedCursor = state.reqFocusIndexByTab?.[tab] ?? defaultCursor;
-      // Never let users jump to future (not-yet-unlocked) requirements.
-      const cursorIndex = Math.max(0, Math.min(defaultCursor, Math.min(items.length - 1, requestedCursor)));
+      const allDone = firstIncompleteIndex === -1;
+      // The "active" (unlocked) cursor: first incomplete, or last if all done
+      const activeCursor = allDone ? items.length - 1 : firstIncompleteIndex;
+      // User can VIEW any item up to activeCursor, but can only COMPLETE the active one
+      const requestedCursor = state.reqFocusIndexByTab?.[tab] ?? activeCursor;
+      // Clamp: can browse up to activeCursor, not beyond
+      const cursorIndex = Math.max(0, Math.min(activeCursor, requestedCursor));
       const key = keys[cursorIndex];
-      const done = !!progress[key];
-      const canInteract = cursorIndex === defaultCursor && !done;
-      const nextIndex = Math.min(items.length - 1, cursorIndex + 1);
+      const isActiveCursor = cursorIndex === activeCursor;
+      const isDone = doneFlags[cursorIndex];
+      const canComplete = isActiveCursor && !isDone;
+      const nextIndex = Math.min(items.length - 1, activeCursor + 1);
 
+      // Step pills — can browse all unlocked (done + active), not locked ones
       const stepsHtml = items.map((_, i) => {
-        const doneStep = doneFlags[i];
-        const isUnlocked = i <= defaultCursor;
-        const isFocus = i === cursorIndex;
-        const bg = isFocus ? "rgba(232,121,249,0.12)" : (doneStep ? "rgba(74,222,128,0.08)" : "var(--surface2)");
-        const border = isFocus ? "rgba(232,121,249,0.45)" : (doneStep ? "rgba(74,222,128,0.25)" : "var(--border)");
-        const color = doneStep ? "var(--success)" : "var(--text-muted)";
+        const isDoneStep = doneFlags[i];
+        const isUnlocked = i <= activeCursor; // can view
+        const isFocused = i === cursorIndex;
+        let pillClass = 'req-step-pill';
+        if (isDoneStep) pillClass += ' done';
+        else if (i === activeCursor) pillClass += ' active';
+        if (isUnlocked && !isDoneStep && i !== activeCursor) pillClass += ' unlocked';
         return `
-          <button type="button"
+          <button type="button" class="${pillClass}"
             ${isUnlocked ? `onclick="setReqFocus('${tab}', ${i})"` : "disabled"}
-            style="
-              background:${bg};
-              border:1px solid ${border};
-              color:${color};
-              font-family:var(--font-mono);
-              font-weight:800;
-              padding:0.35rem 0.6rem;
-              border-radius:999px;
-              cursor:${isUnlocked ? "pointer" : "not-allowed"};
-              font-size:0.85rem;
-              opacity:${isUnlocked ? "1" : "0.55"};
-            "
+            title="${isDoneStep ? 'Completed' : i === activeCursor ? 'Current task' : isUnlocked ? 'View' : 'Locked'}"
           >
-            ${i + 1}${doneStep ? " ✓" : ""}
+            ${isDoneStep ? '✓' : i + 1}
           </button>
         `;
       }).join("");
 
+      const dayLabel = tab === "day1" ? "📄 Day 1 — Frontend Sprint" : "⚙️ Day 2 — Backend + Integration";
+
       return `
         <div class="req-section">
-          <h3>${tab === "day1" ? "📄 Day 1 — Frontend Sprint" : "⚙️ Day 2 — Backend + Integration"}</h3>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;">
-            <div style="flex:1;min-width:260px;">
-              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1.25rem;">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
-                  <div style="font-family:var(--font-mono);font-weight:800;color:var(--text-muted);font-size:0.95rem;">
-                    Phase step ${cursorIndex + 1} / ${items.length}
+          <h3>${dayLabel}</h3>
+
+          <div style="display:flex;gap:1.25rem;flex-wrap:wrap;align-items:flex-start;">
+
+            <!-- Main task card -->
+            <div style="flex:1;min-width:280px;">
+              <div class="req-phase-card ${isDone ? 'done-req' : isActiveCursor ? 'active-req' : 'locked-req'}">
+
+                <!-- Card header -->
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;">
+                  <div style="display:flex;align-items:center;gap:0.6rem;">
+                    ${isDone
+                      ? `<span style="font-size:1.2rem;">✅</span>`
+                      : isActiveCursor
+                      ? `<span style="width:10px;height:10px;border-radius:50%;background:var(--accent-pink);display:inline-block;animation:phaseGlow 2s infinite;"></span>`
+                      : `<span style="width:10px;height:10px;border-radius:50%;background:var(--border);display:inline-block;"></span>`
+                    }
+                    <span style="font-size:0.82rem;font-weight:700;color:var(--text-muted);font-family:var(--font-mono);">
+                      ${isDone ? 'COMPLETED' : isActiveCursor ? 'CURRENT TASK' : 'PREVIEW'}
+                    </span>
                   </div>
-                  <div style="font-family:var(--font-mono);font-weight:900;color:var(--accent-teal);background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.18);padding:0.2rem 0.6rem;border-radius:999px;">
+                  <div style="font-family:var(--font-mono);font-weight:900;color:var(--accent-teal);background:rgba(45,212,191,0.08);border:1px solid rgba(45,212,191,0.2);padding:0.2rem 0.65rem;border-radius:999px;font-size:0.85rem;">
                     ${items[cursorIndex].pts} pts
                   </div>
                 </div>
 
-                <div style="font-size:1.05rem;line-height:1.6;">${items[cursorIndex].text}</div>
+                <!-- Task text -->
+                <div style="font-size:1.05rem;line-height:1.65;margin-bottom:0.5rem;font-weight:${isActiveCursor && !isDone ? '600' : '400'};">
+                  ${items[cursorIndex].text}
+                </div>
 
-                <div style="margin-top:1rem;">
-                  <label style="display:flex;align-items:center;gap:0.75rem;">
-                    <input
-                      type="checkbox"
-                      ${done ? "checked" : ""}
-                      ${(!canInteract || done) ? "disabled" : ""}
-                      onchange="handleReqStepToggle('${key}', '${tab}', ${nextIndex}, this.checked)"
-                      style="flex-shrink:0;accent-color:var(--accent-pink);width:18px;height:18px;cursor:pointer;"
-                    />
-                    <span style="color:var(--text-muted);font-weight:600;">
-                      ${done ? "Completed (read-only)" : canInteract ? "Mark this requirement complete" : "Locked (read-only)"}
-                    </span>
-                  </label>
+                <!-- Vibe note -->
+                ${isActiveCursor && !isDone ? `
+                  <div style="font-size:0.82rem;color:var(--accent-pink);margin-top:0.6rem;opacity:0.8;">
+                    ✦ Build this your way — use any stack, pattern, or creative approach you want.
+                  </div>
+                ` : ''}
 
-                  ${done ? `
-                    <div style="margin-top:0.8rem;font-size:0.92rem;color:var(--success);font-weight:800;">
-                      ✓ Done. You can revisit this in read-only mode.
-                    </div>
-                  ` : ""}
+                <!-- Action -->
+                ${isDone
+                  ? `<div class="req-done-badge">✅ Locked in — great work! Move to the next step.</div>`
+                  : isActiveCursor
+                  ? `<button class="req-complete-btn" onclick="handleReqStepToggle('${key}', '${tab}', ${nextIndex}, true)">
+                      ✓ Mark Complete &amp; Unlock Next
+                    </button>`
+                  : `<div style="margin-top:0.9rem;font-size:0.82rem;color:var(--text-muted);padding:0.6rem;background:var(--surface);border-radius:6px;border:1px solid var(--border);">
+                      👁 Preview mode — complete active task first to unlock this step.
+                    </div>`
+                }
+              </div>
+            </div>
+
+            <!-- Step tracker -->
+            <div style="min-width:200px;max-width:240px;">
+              <div style="font-weight:800;color:var(--text-muted);font-size:0.82rem;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.75rem;">Steps</div>
+              <div style="display:flex;flex-wrap:wrap;gap:0.45rem;">${stepsHtml}</div>
+              <div style="margin-top:1rem;padding:0.75rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem;">Completed</div>
+                <div style="font-family:var(--font-mono);font-weight:800;font-size:1.1rem;color:var(--accent-teal);">${completedCount} <span style="color:var(--text-muted);font-size:0.85rem;font-weight:500;">/ ${items.length}</span></div>
+                <div class="progress-bar-wrap" style="margin-top:0.5rem;margin-bottom:0;height:5px;">
+                  <div class="progress-bar-fill" style="width:${Math.round((completedCount/items.length)*100)}%"></div>
                 </div>
               </div>
+              ${allDone ? `
+                <div style="margin-top:0.75rem;padding:0.65rem;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.25);border-radius:8px;text-align:center;">
+                  <div style="font-size:1.2rem;">🎉</div>
+                  <div style="font-size:0.82rem;color:var(--success);font-weight:700;margin-top:0.2rem;">All ${tab === 'day1' ? 'Day 1' : 'Day 2'} tasks done!</div>
+                </div>
+              ` : ''}
             </div>
 
-            <div style="min-width:240px;">
-              <div style="font-weight:800;color:var(--text-muted);margin-bottom:0.6rem;">Steps</div>
-              <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">${stepsHtml}</div>
-              <div style="margin-top:0.85rem;font-size:0.88rem;color:var(--text-muted);line-height:1.5;">
-                Completed: <strong style="color:var(--accent-teal)">${completedCount}</strong> / ${items.length}
-              </div>
-            </div>
           </div>
         </div>
       `;
@@ -1177,12 +1250,14 @@ const CONFIG = {
   
   function toggleProgress(key, checked) {
     const progress = getUserProgress(state.user.id);
-    // Once a requirement is completed, it becomes read-only (can't be unchecked).
+    // Once a requirement is completed, it's permanently locked — can never be unchecked.
     if (progress[key] && !checked) {
-      toast("Completed requirements are locked (read-only).", "warning");
+      toast("Completed requirements are permanently locked. No going back! 🔒", "warning");
       return;
     }
-    progress[key] = checked;
+    // Can only check (mark complete), not uncheck
+    if (!checked) return;
+    progress[key] = true;
     saveUserProgress(state.user.id, progress);
     state.progress = progress;
     // Persist to Supabase (non-blocking)
@@ -1196,7 +1271,7 @@ const CONFIG = {
         toast(e.message || "Failed to sync progress.", "warning");
       }
     })();
-    if (checked) toast("Task marked complete! 🎉", "success");
+    toast("Task locked in! 🎉 Next requirement unlocked.", "success");
   }
   
   // ===== PROGRESS PAGE =====
@@ -1264,9 +1339,6 @@ const CONFIG = {
   // ===== LEADERBOARD PAGE =====
   function renderLeaderboardPage() {
     const teamsSorted = (state.lbTeams || []).slice();
-    const rankColors = ["gold", "silver", "bronze"];
-    const medals = ["🥇", "🥈", "🥉"];
-
     const lbFilter = state.lbTeamFilter || "all";
     const visibleTeams = lbFilter === "all" ? teamsSorted : teamsSorted.filter(t => t.teamKey === lbFilter);
 
@@ -1283,81 +1355,109 @@ const CONFIG = {
     ];
 
     const meUserId = state.user?.id;
-    return `
-      <div class="section-title">🏆 Leaderboard</div>
-      <div class="section-subtitle">Team-wise rankings based on progress. Final results are determined by judges.</div>
+    const top3 = teamsSorted.slice(0, 3);
 
-      <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.15);border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1rem;font-size:1rem;">
-        <div style="font-weight:900;color:var(--accent-white);margin-bottom:0.25rem;font-size:1.08rem;">
-          <strong>Final evaluation will be done by judges.</strong>
+    // Podium — only show when viewing all and there are teams
+    const podiumHtml = (lbFilter === "all" && top3.length > 0) ? (() => {
+      const podiumOrder = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3; // 2nd, 1st, 3rd for visual podium
+      const rankOf = (t) => top3.indexOf(t);
+      const medals = ['🥇', '🥈', '🥉'];
+      const rankClasses = ['rank-2', 'rank-1', 'rank-3'];
+
+      return `
+        <div class="lb-podium scroll-reveal delay-1">
+          ${podiumOrder.map((team, podiumIdx) => {
+            if (!team) return '';
+            const theme = THEMES.find(t => t.id === team.themeId);
+            const rank = rankOf(team); // 0=1st, 1=2nd, 2=3rd
+            const rankClass = rankClasses[podiumIdx];
+            const medal = medals[rank];
+            const isMeTeam = meUserId && team.isMyTeam;
+            return `
+              <div class="lb-podium-item ${rankClass}">
+                <div class="lb-podium-medal">${medal}</div>
+                <div class="lb-podium-name">${team.teamKey}${isMeTeam ? ' <span style="color:var(--accent-pink);font-size:0.7rem;">(you)</span>' : ''}</div>
+                <div class="lb-podium-theme">${theme ? `${theme.icon} ${theme.name}` : '—'}</div>
+                <div class="lb-podium-pts">${team.teamPoints}</div>
+                <div class="lb-podium-pts-label">points</div>
+              </div>
+            `;
+          }).join('')}
         </div>
-        <div style="color:var(--text-muted);font-weight:600;">
-          This leaderboard reflects self-reported progress only; final scoring may differ.
-        </div>
+      `;
+    })() : '';
+
+    return `
+      <div class="section-title scroll-reveal">🏆 Leaderboard</div>
+      <div class="section-subtitle scroll-reveal delay-1">Team rankings based on self-reported progress. Final results determined by judges.</div>
+
+      <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.15);border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1.25rem;" class="scroll-reveal delay-2">
+        <div style="font-weight:900;color:var(--accent-white);margin-bottom:0.25rem;">⚖️ Final evaluation is done by judges.</div>
+        <div style="color:var(--text-muted);font-size:0.9rem;">This leaderboard reflects self-reported progress only — scoring may differ after judging.</div>
       </div>
 
-      <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem;">
-      <div style="font-weight:800;color:var(--text-muted);">Team:</div>
-      <select
-        value="${lbFilter}"
-        onchange="setLbTeamFilter(this.value)"
-        style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:220px;max-width:100%;"
-      >
-        ${teamOptions.map(o => `<option value="${o.id}" ${lbFilter===o.id?'selected':''}>${o.label}</option>`).join("")}
-      </select>
-    </div>
-    ${lbFilter !== "all" ? (() => {
-      const t = teamsSorted.find(t => t.teamKey === lbFilter);
-      if (!t) return "";
-      const theme = THEMES.find(th => th.id === t.themeId);
-      return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.9rem;">
-        <strong>${t.teamKey}</strong>${theme ? ` — ${theme.icon} ${theme.name}` : ""}<br/>
-        <span style="color:var(--text-muted);">${(t.memberNames||[]).join(", ")}</span>
-      </div>`;
-    })() : ""}
-        <select
-          value="${lbFilter}"
-          onchange="setLbTeamFilter(this.value)"
-          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:260px;"
-        >
-          ${teamOptions.map(o => `<option value="${o.id}">${o.label}</option>`).join("")}
+      ${podiumHtml}
+
+      <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem;" class="scroll-reveal delay-3">
+        <div style="font-weight:800;color:var(--text-muted);font-size:0.9rem;">Filter team:</div>
+        <select onchange="setLbTeamFilter(this.value)"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:220px;max-width:100%;transition:border-color 0.15s;"
+          onfocus="this.style.borderColor='var(--accent-pink)'" onblur="this.style.borderColor='var(--border)'">
+          ${teamOptions.map(o => `<option value="${o.id}" ${lbFilter===o.id?'selected':''}>${o.label}</option>`).join("")}
         </select>
       </div>
 
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-      <div class="leaderboard-table" style="min-width:580px;">
-        <div class="lb-header">
-          <div>Rank</div>
-          <div>Team</div>
-          <div>Members</div>
-          <div>Points</div>
-          <div>Progress</div>
+      ${lbFilter !== "all" ? (() => {
+        const t = teamsSorted.find(t => t.teamKey === lbFilter);
+        if (!t) return "";
+        const theme = THEMES.find(th => th.id === t.themeId);
+        return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.9rem;" class="scroll-reveal">
+          <strong>${t.teamKey}</strong>${theme ? ` — ${theme.icon} ${theme.name}` : ""}<br/>
+          <span style="color:var(--text-muted);">${(t.memberNames||[]).join(", ")}</span>
+        </div>`;
+      })() : ""}
+
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;" class="scroll-reveal delay-4">
+        <div class="leaderboard-table" style="min-width:560px;">
+          <div class="lb-header">
+            <div>Rank</div>
+            <div>Team</div>
+            <div>Members</div>
+            <div>Points</div>
+            <div>Progress</div>
+          </div>
+          ${visibleTeams.length === 0
+            ? `<div style="padding:2rem;text-align:center;color:var(--text-muted);">No teams found.</div>`
+            : visibleTeams.map((team, i) => {
+              const theme = THEMES.find(t => t.id === team.themeId);
+              const isMeTeam = meUserId && (team.isMyTeam === true);
+              const memberNames = (team.memberNames || []);
+              const shown = memberNames.slice(0, 3);
+              const rest = memberNames.length - shown.length;
+              const memberText = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+              const rankClass = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "";
+              const rowRankClass = i === 0 ? "lb-row-rank1" : i === 1 ? "lb-row-rank2" : i === 2 ? "lb-row-rank3" : "";
+              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i+1}`;
+              return `
+                <div class="lb-row ${rowRankClass} ${isMeTeam ? 'current-user' : ''}" style="animation-delay:${i * 0.06}s;">
+                  <div class="lb-rank">
+                    <div class="lb-rank-badge ${rankClass}">${medal}</div>
+                  </div>
+                  <div>
+                    <div class="lb-name">${team.teamKey}${isMeTeam ? '<span style="font-size:0.7rem;color:var(--accent-pink);margin-left:0.35rem;">(your team)</span>' : ''}</div>
+                    <div class="lb-theme" style="margin-top:0.2rem;">${theme ? `${theme.icon} ${theme.name}` : "Theme not selected"}</div>
+                  </div>
+                  <div class="lb-theme" style="font-size:0.85rem;color:var(--text-muted);align-self:center;">${memberText || "—"}</div>
+                  <div class="lb-pts" style="align-self:center;">${team.teamPoints} <span style="font-size:0.72rem;color:var(--text-muted);font-weight:500;">pts</span></div>
+                  <div class="lb-progress" style="align-self:center;">
+                    <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.pct}%"></div></div>
+                    <div class="lb-pct">${team.pct}%</div>
+                  </div>
+                </div>
+              `;
+            }).join('')
+          }
         </div>
-        ${visibleTeams.map((team, i) => {
-          const theme = THEMES.find(t => t.id === team.themeId);
-          const isMeTeam = meUserId && (team.isMyTeam === true);
-          const memberNames = (team.memberNames || []);
-          const shown = memberNames.slice(0, 3);
-          const rest = memberNames.length - shown.length;
-          const memberText = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
-          return `
-            <div class="lb-row ${isMeTeam ? 'current-user' : ''}">
-              <div class="lb-rank ${rankColors[i] || ''}">
-                ${i < 3 ? medals[i] : `#${i+1}`}
-              </div>
-              <div>
-                <div class="lb-name">${team.teamKey}${isMeTeam ? '<span style="font-size:0.7rem;color:var(--accent-pink);margin-left:0.35rem;">(your team)</span>' : ''}</div>
-                <div class="lb-theme" style="margin-top:0.25rem;">${theme ? `${theme.icon} ${theme.name}` : "Theme not selected"}</div>
-              </div>
-              <div class="lb-theme" style="font-size:0.9rem;color:var(--text-muted);">${memberText}</div>
-              <div class="lb-pts">${team.teamPoints} pts</div>
-              <div class="lb-progress">
-                <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.pct}%"></div></div>
-                <div class="lb-pct">${team.pct}%</div>
-              </div>
-            </div>
-          `;
-        }).join('')}
       </div>
     `;
   }
@@ -1773,8 +1873,33 @@ const CONFIG = {
     if (window._modalConfirm) window._modalConfirm();
   }
   
+  // ===== SCROLL REVEAL OBSERVER =====
+  function initScrollReveal() {
+    const els = document.querySelectorAll('.scroll-reveal, .scroll-reveal-left, .scroll-reveal-scale');
+    if (!els.length) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
+    els.forEach(el => io.observe(el));
+  }
+
   // ===== ATTACH EVENTS =====
-  function attachNavEvents() {}
+  function attachNavEvents() {
+    // Show hamburger on small screens
+    const hamburger = document.getElementById("sidebar-toggle");
+    if (hamburger) {
+      const checkBreakpoint = () => {
+        hamburger.style.display = window.innerWidth <= 768 ? "flex" : "none";
+      };
+      checkBreakpoint();
+      window.addEventListener("resize", checkBreakpoint);
+    }
+  }
   function attachPageEvents() {}
   
   // ===== INIT =====
@@ -1818,6 +1943,22 @@ const CONFIG = {
     });
   }
   
+  function toggleSidebar() {
+    const sidebar = document.querySelector(".sidebar");
+    const backdrop = document.getElementById("sidebar-backdrop");
+    if (sidebar) sidebar.classList.toggle("open");
+    if (backdrop) backdrop.classList.toggle("visible");
+  }
+
+  function closeSidebarOnMobile() {
+    if (window.innerWidth <= 768) {
+      const sidebar = document.querySelector(".sidebar");
+      const backdrop = document.getElementById("sidebar-backdrop");
+      if (sidebar) sidebar.classList.remove("open");
+      if (backdrop) backdrop.classList.remove("visible");
+    }
+  }
+
   window.navigate = navigate;
   window.logout = logout;
   window.selectTheme = selectTheme;
@@ -1836,5 +1977,8 @@ const CONFIG = {
   window.lockDesignFocus = lockDesignFocus;
   window.clearTestingData = clearTestingData;
   window.setLbTeamFilter = setLbTeamFilter;
+  window.toggleSidebar = toggleSidebar;
+  window.closeSidebarOnMobile = closeSidebarOnMobile;
+  window.initScrollReveal = initScrollReveal;
   
   init();
