@@ -510,15 +510,37 @@ const CONFIG = {
       (async () => {
         try {
           const resp = await apiFetch("/api/leaderboard");
-          const teams = (resp.teams || resp.items || []).map(t => ({
-            teamKey: t.team_key,
-            themeId: t.theme_id || null,
-            membersCount: t.members_count || 0,
-            memberNames: t.member_names || [],
-            teamPoints: t.team_points || 0,
-            pct: t.completion_pct || 0,
-            isMyTeam: state.user?.team_name ? t.team_key === state.user.team_name : false,
-          }));
+          const teams = (resp.teams || resp.items || []).map(t => {
+            const themeId = t.theme_id || null;
+            const theme = THEMES.find(th => th.id === themeId);
+            // Recalculate real pts from THEMES pts values using done key count
+            let teamPoints = 0, totalPossible = 0;
+            if (theme) {
+              const doneCount = t.team_points || 0; // DB gives us count of true keys
+              // Build ordered items list to map index→pts
+              const allItems = [...theme.day1, ...theme.day2];
+              totalPossible = allItems.reduce((s, item) => s + item.pts, 0);
+              // We don't have which specific keys are done from leaderboard API
+              // so approximate: assume items done in order (lowest index first)
+              let remaining = doneCount;
+              for (const item of allItems) {
+                if (remaining <= 0) break;
+                teamPoints += item.pts;
+                remaining--;
+              }
+            }
+            const pct = totalPossible > 0 ? Math.round((teamPoints / totalPossible) * 100) : 0;
+            return {
+              teamKey: t.team_key,
+              themeId,
+              membersCount: t.members_count || 0,
+              memberNames: t.member_names || [],
+              teamPoints,
+              pct,
+              isMyTeam: state.user?.team_name ? t.team_key === state.user.team_name : false,
+            };
+          });
+          teams.sort((a, b) => b.teamPoints - a.teamPoints);
           state.lbTeams = teams;
           render();
         } catch (e) {
@@ -594,8 +616,13 @@ const CONFIG = {
     const username = document.getElementById("login-user").value.trim();
     const password = document.getElementById("login-pass").value.trim();
     const errorEl = document.getElementById("login-error");
+    const btn = document.getElementById("login-btn");
     errorEl.style.display = "none";
     if (!username || !password) { errorEl.textContent = "Please enter both username and password."; errorEl.style.display = "block"; return; }
+    // Show loading state immediately
+    btn.disabled = true;
+    btn.textContent = "Logging in...";
+    btn.style.opacity = "0.7";
     (async () => {
       try {
         const auth = await apiFetch("/api/auth/login", {
@@ -605,13 +632,16 @@ const CONFIG = {
         setStoredToken(auth.token);
         localStorage.setItem("wn_user", JSON.stringify(auth.user));
         state.user = auth.user;
-
+        btn.textContent = "Loading your dashboard...";
         await hydrateUserState();
         render();
-        toast(`Welcome back, ${state.user.name}!`, "success");
+        toast(`Welcome, ${state.user.name}! 🎉`, "success");
       } catch (e) {
         errorEl.textContent = e.message || "Login failed.";
         errorEl.style.display = "block";
+        btn.disabled = false;
+        btn.textContent = "Login to Dashboard →";
+        btn.style.opacity = "1";
       }
     })();
   }
@@ -1267,60 +1297,67 @@ const CONFIG = {
       </div>
 
       <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem;">
-        <div style="font-weight:800;color:var(--text-muted);">Team:</div>
+      <div style="font-weight:800;color:var(--text-muted);">Team:</div>
+      <select
+        value="${lbFilter}"
+        onchange="setLbTeamFilter(this.value)"
+        style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:220px;max-width:100%;"
+      >
+        ${teamOptions.map(o => `<option value="${o.id}" ${lbFilter===o.id?'selected':''}>${o.label}</option>`).join("")}
+      </select>
+    </div>
+    ${lbFilter !== "all" ? (() => {
+      const t = teamsSorted.find(t => t.teamKey === lbFilter);
+      if (!t) return "";
+      const theme = THEMES.find(th => th.id === t.themeId);
+      return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.9rem;">
+        <strong>${t.teamKey}</strong>${theme ? ` — ${theme.icon} ${theme.name}` : ""}<br/>
+        <span style="color:var(--text-muted);">${(t.memberNames||[]).join(", ")}</span>
+      </div>`;
+    })() : ""}
         <select
+          value="${lbFilter}"
           onchange="setLbTeamFilter(this.value)"
-          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:220px;max-width:100%;"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:260px;"
         >
-          ${teamOptions.map(o => `<option value="${o.id}" ${lbFilter===o.id?'selected':''}>${o.label}</option>`).join("")}
+          ${teamOptions.map(o => `<option value="${o.id}">${o.label}</option>`).join("")}
         </select>
       </div>
 
-      ${lbFilter !== "all" ? (() => {
-        const t = teamsSorted.find(t => t.teamKey === lbFilter);
-        if (!t) return "";
-        const theme = THEMES.find(th => th.id === t.themeId);
-        return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.9rem;">
-          <strong>${t.teamKey}</strong>${theme ? ` — ${theme.icon} ${theme.name}` : ""}<br/>
-          <span style="color:var(--text-muted);">${(t.memberNames||[]).join(", ")}</span>
-        </div>`;
-      })() : ""}
-
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-        <div class="leaderboard-table" style="min-width:580px;">
-          <div class="lb-header">
-            <div>Rank</div>
-            <div>Team</div>
-            <div>Members</div>
-            <div>Points</div>
-            <div>Progress</div>
-          </div>
-          ${visibleTeams.map((team, i) => {
-            const theme = THEMES.find(t => t.id === team.themeId);
-            const isMeTeam = meUserId && (team.isMyTeam === true);
-            const memberNames = (team.memberNames || []);
-            const shown = memberNames.slice(0, 3);
-            const rest = memberNames.length - shown.length;
-            const memberText = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
-            return `
-              <div class="lb-row ${isMeTeam ? 'current-user' : ''}">
-                <div class="lb-rank ${rankColors[i] || ''}">
-                  ${i < 3 ? medals[i] : `#${i+1}`}
-                </div>
-                <div>
-                  <div class="lb-name">${team.teamKey}${isMeTeam ? '<span style="font-size:0.7rem;color:var(--accent-pink);margin-left:0.35rem;">(your team)</span>' : ''}</div>
-                  <div class="lb-theme" style="margin-top:0.25rem;">${theme ? `${theme.icon} ${theme.name}` : "Theme not selected"}</div>
-                </div>
-                <div class="lb-theme" style="font-size:0.9rem;color:var(--text-muted);">${memberText}</div>
-                <div class="lb-pts">${team.teamPoints} pts</div>
-                <div class="lb-progress">
-                  <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.pct}%"></div></div>
-                  <div class="lb-pct">${team.pct}%</div>
-                </div>
-              </div>
-            `;
-          }).join('')}
+      <div class="leaderboard-table" style="min-width:580px;">
+        <div class="lb-header">
+          <div>Rank</div>
+          <div>Team</div>
+          <div>Members</div>
+          <div>Points</div>
+          <div>Progress</div>
         </div>
+        ${visibleTeams.map((team, i) => {
+          const theme = THEMES.find(t => t.id === team.themeId);
+          const isMeTeam = meUserId && (team.isMyTeam === true);
+          const memberNames = (team.memberNames || []);
+          const shown = memberNames.slice(0, 3);
+          const rest = memberNames.length - shown.length;
+          const memberText = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+          return `
+            <div class="lb-row ${isMeTeam ? 'current-user' : ''}">
+              <div class="lb-rank ${rankColors[i] || ''}">
+                ${i < 3 ? medals[i] : `#${i+1}`}
+              </div>
+              <div>
+                <div class="lb-name">${team.teamKey}${isMeTeam ? '<span style="font-size:0.7rem;color:var(--accent-pink);margin-left:0.35rem;">(your team)</span>' : ''}</div>
+                <div class="lb-theme" style="margin-top:0.25rem;">${theme ? `${theme.icon} ${theme.name}` : "Theme not selected"}</div>
+              </div>
+              <div class="lb-theme" style="font-size:0.9rem;color:var(--text-muted);">${memberText}</div>
+              <div class="lb-pts">${team.teamPoints} pts</div>
+              <div class="lb-progress">
+                <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.pct}%"></div></div>
+                <div class="lb-pct">${team.pct}%</div>
+              </div>
+            </div>
+          `;
+        }).join('')}
       </div>
     `;
   }
@@ -1649,10 +1686,10 @@ const CONFIG = {
       </div>
       <div class="section-title" style="font-size:1rem;margin:1.25rem 0 0.75rem;">Testing Data</div>
       <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
-      <button class="btn-ghost" onclick="clearTestingData()" style="color:var(--error);border-color:var(--error);">🧹 Reset ALL Participants — Progress + Themes + Timers</button>
-      <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.5;">
-        ⚠️ Wipes every team's theme selection, timer, and progress from Supabase. Use before competition starts.
-      </div>
+        <button class="btn-ghost" onclick="clearTestingData()">🧹 Clear My Progress Data</button>
+        <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.5;">
+          Clears your progress in Supabase and resets local state for testing.
+        </div>
       </div>
     `;
   }
