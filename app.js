@@ -504,6 +504,7 @@ const CONFIG = {
   
   // ===== NAVIGATE =====
   function navigate(page) {
+    if (page === "admin") state.adminTeams = null;
     state.currentPage = page;
     if (page === "leaderboard") {
       (async () => {
@@ -1265,8 +1266,25 @@ const CONFIG = {
         </div>
       </div>
 
-      <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;margin-bottom:1.25rem;">
-        <div style="font-weight:800;color:var(--text-muted);">Team:</div>
+      <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem;">
+      <div style="font-weight:800;color:var(--text-muted);">Team:</div>
+      <select
+        value="${lbFilter}"
+        onchange="setLbTeamFilter(this.value)"
+        style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:220px;max-width:100%;"
+      >
+        ${teamOptions.map(o => `<option value="${o.id}" ${lbFilter===o.id?'selected':''}>${o.label}</option>`).join("")}
+      </select>
+    </div>
+    ${lbFilter !== "all" ? (() => {
+      const t = teamsSorted.find(t => t.teamKey === lbFilter);
+      if (!t) return "";
+      const theme = THEMES.find(th => th.id === t.themeId);
+      return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.9rem;">
+        <strong>${t.teamKey}</strong>${theme ? ` — ${theme.icon} ${theme.name}` : ""}<br/>
+        <span style="color:var(--text-muted);">${(t.memberNames||[]).join(", ")}</span>
+      </div>`;
+    })() : ""}
         <select
           value="${lbFilter}"
           onchange="setLbTeamFilter(this.value)"
@@ -1276,7 +1294,8 @@ const CONFIG = {
         </select>
       </div>
 
-      <div class="leaderboard-table">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <div class="leaderboard-table" style="min-width:580px;">
         <div class="lb-header">
           <div>Rank</div>
           <div>Team</div>
@@ -1558,14 +1577,34 @@ const CONFIG = {
   
   // ===== ADMIN PAGE =====
   function renderAdminPage() {
+    // Fetch live data if not loaded yet
+    if (!state.adminTeams) {
+      state.adminTeams = [];
+      (async () => {
+        try {
+          const resp = await apiFetch("/api/leaderboard");
+          state.adminTeams = (resp.teams || resp.items || []);
+          render();
+        } catch (e) { toast("Failed to load participant data.", "warning"); }
+      })();
+    }
+  
+    const teams = state.adminTeams || [];
+    const totalMembers = teams.reduce((s, t) => s + (t.members_count || 0), 0);
+  
     return `
       <div class="section-title">⚙️ Admin Panel</div>
-      <div class="section-subtitle">Manage day settings and monitor participants. To release Day 2 requirements, click "⚙️ Day 2 — Backend" below.</div>
+      <div class="section-subtitle">Manage day settings and monitor teams. Click "⚙️ Day 2 — Backend" to release Day 2 requirements.</div>
       <div class="admin-grid">
         <div class="stat-card">
           <div class="stat-label">Total Participants</div>
-          <div class="stat-value">${USERS_DB.filter(u=>u.role!=='admin').length}</div>
-          <div class="stat-sub">Registered users</div>
+          <div class="stat-value">${totalMembers}</div>
+          <div class="stat-sub">Across all teams</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Teams</div>
+          <div class="stat-value">${teams.length}</div>
+          <div class="stat-sub">Competing groups</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Current Day</div>
@@ -1583,29 +1622,43 @@ const CONFIG = {
         <button class="btn-day ${state.currentDay===1?'active-day':''}" onclick="setDay(1)">📄 Day 1 — Frontend</button>
         <button class="btn-day ${state.currentDay===2?'active-day':''}" onclick="setDay(2)">⚙️ Day 2 — Backend</button>
       </div>
-      <div class="section-title" style="font-size:1rem;margin-bottom:0.75rem;">Participants</div>
-      <div class="leaderboard-table">
-        <div class="lb-header" style="grid-template-columns:60px 1fr 150px 100px;">
-          <div>#</div><div>Name</div><div>Theme</div><div>Status</div>
+      <div class="section-title" style="font-size:1rem;margin-bottom:0.75rem;">Teams & Progress</div>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <div class="leaderboard-table" style="min-width:600px;">
+          <div class="lb-header" style="grid-template-columns:50px 1fr 1fr 100px 120px;">
+            <div>#</div><div>Team</div><div>Members</div><div>Points</div><div>Progress</div>
+          </div>
+          ${teams.length === 0 ? `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);">Loading teams...</div>` :
+            teams.map((t, i) => {
+              const theme = THEMES.find(th => th.id === t.theme_id);
+              const memberNames = (t.member_names || []);
+              const shown = memberNames.slice(0, 3);
+              const rest = memberNames.length - shown.length;
+              const memberText = rest > 0 ? `${shown.join(", ")} +${rest} more` : (shown.join(", ") || "—");
+              return `
+                <div class="lb-row" style="grid-template-columns:50px 1fr 1fr 100px 120px;">
+                  <div style="font-family:var(--font-mono);font-weight:700;">${i+1}</div>
+                  <div>
+                    <div class="lb-name">${t.team_key}</div>
+                    <div class="lb-theme">${theme ? theme.icon + ' ' + theme.name : 'No theme'}</div>
+                  </div>
+                  <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5;">${memberText}</div>
+                  <div class="lb-pts">${t.team_points || 0} pts</div>
+                  <div class="lb-progress">
+                    <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${t.completion_pct || 0}%"></div></div>
+                    <div class="lb-pct">${t.completion_pct || 0}%</div>
+                  </div>
+                </div>
+              `;
+            }).join('')
+          }
         </div>
-        ${USERS_DB.filter(u=>u.role!=='admin').map((u, i) => {
-          const themeId = getUserTheme(u.id);
-          const theme = THEMES.find(t => t.id === themeId);
-          return `
-            <div class="lb-row" style="grid-template-columns:60px 1fr 150px 100px;">
-              <div>${i+1}</div>
-              <div class="lb-name">${u.name}</div>
-              <div style="font-size:0.8rem;color:var(--text-muted);">${theme ? theme.icon + ' ' + theme.name.split(' ').slice(0,2).join(' ') : '—'}</div>
-              <div><span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:999px;background:${theme?'rgba(74,222,128,0.1)':'rgba(112,112,160,0.1)'};color:${theme?'var(--success)':'var(--text-muted)'};">${theme?'Active':'No theme'}</span></div>
-            </div>
-          `;
-        }).join('')}
       </div>
       <div class="section-title" style="font-size:1rem;margin:1.25rem 0 0.75rem;">Testing Data</div>
       <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
-        <button class="btn-ghost" onclick="clearTestingData()">🧹 Clear Local Progress Data</button>
+        <button class="btn-ghost" onclick="clearTestingData()">🧹 Clear My Progress Data</button>
         <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.5;">
-          Removes saved themes/progress/design review for all users in this browser.
+          Clears your progress in Supabase and resets local state for testing.
         </div>
       </div>
     `;
@@ -1640,6 +1693,12 @@ const CONFIG = {
         }
         keysToRemove.forEach(k => localStorage.removeItem(k));
         localStorage.setItem("wn_current_day", 1);
+
+        // Also wipe progress in Supabase for this user (non-blocking)
+        apiFetch(`/api/progress/${state.user.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ progress: {} }),
+        }).catch(() => {});
 
         // Reset in-memory state for the current user.
         state.progress = {};
