@@ -1,0 +1,92 @@
+[
+  { "team_name": "Bravo", "participant_name": "ALI MASOOD", "phone": "03124544920", "university": "FAST LHR" },
+  { "team_name": "Bravo", "participant_name": "Ali Raza Haider Khan", "phone": "+92 313 0669834", "university": "FAST LHR" },
+  { "team_name": "Bravo", "participant_name": "Usama Ali - Web nexus", "phone": "+92 301 4333117", "university": "FAST LHR" },
+
+  { "team_name": "3idiots", "participant_name": "Muhammad Awais - Web nexus", "phone": "03244648324", "university": "ucp, lahore" },
+  { "team_name": "3idiots", "participant_name": "Syed Muhammad Bilal - Web nexus", "phone": "03214831415", "university": "ucp, lahore" },
+  { "team_name": "3idiots", "participant_name": "Mughees Joiya - Web nexus", "phone": "03285777754", "university": "ucp, lahore" },
+
+  { "team_name": "Vortex", "participant_name": "Gul Ali - Web nexus", "phone": "03056014521", "university": "University of Management and Technology" },
+
+  { "team_name": "Osama Bin Loadin", "participant_name": "Rehan Abrar - Web nexus", "phone": "03334892624", "university": "Riphah International University" },
+  { "team_name": "Osama Bin Loadin", "participant_name": "Alina Asif Khan - Web nexus", "phone": "03217857439", "university": "Riphah International University" },
+  { "team_name": "Osama Bin Loadin", "participant_name": "Ayesha Asif - Web nexus", "phone": "03334549371", "university": "Riphah International University" },
+
+  { "team_name": "mkmkm", "participant_name": "Pervaiz Mehdi - Web nexus", "phone": "03554439227", "university": "ucp" },
+  { "team_name": "CodingBuddies", "participant_name": "Dua Imran - Web nexus", "phone": "03282111431", "university": "BNU" },
+
+  { "team_name": "804 Not Found", "participant_name": "Ubaid Ur Rehman Dar - Web nexus", "phone": "03404835034", "university": "Riphah University" },
+  { "team_name": "804 Not Found", "participant_name": "Zainab Zafar - Web nexus", "phone": "+92 335 1876786", "university": "Riphah University" },
+
+  { "team_name": "Webhuzz", "participant_name": "abdullah shah - Web nexus", "phone": "03350904415", "university": "Minhaj University Lahore" },
+
+  { "team_name": "WebMatrix", "participant_name": "Sher dil - Web nexus", "phone": "03114134813", "university": "Minhaj University Lahore" },
+  { "team_name": "WebMatrix", "participant_name": "Farhan rasool - Web nexus", "phone": "03114134813", "university": "Minhaj University Lahore" },
+
+  { "team_name": "sup", "participant_name": "Muhammad Hammad - Web nexus", "phone": "03225442200", "university": "UCP" },
+  { "team_name": "Voi stars", "participant_name": "Umair ali - Web nexus", "phone": "03238432235", "university": "Ucp" },
+
+  { "team_name": "Autobots", "participant_name": "Faiq-ul- Hassan - Web nexus", "phone": "03354420242", "university": "Minhaj University Lahore" },
+  { "team_name": "Autobots", "participant_name": "Burhan Tahir - Web nexus", "phone": "03284099474", "university": "Minhaj University Lahore" },
+  { "team_name": "Autobots", "participant_name": "Malia Rizwan - Web nexus", "phone": "03402991100", "university": "Minhaj University Lahore" },
+
+  { "team_name": "Team alpha", "participant_name": "Aleeha Azher - Web nexus", "phone": "03134812169", "university": "University of Central Punjab" },
+  { "team_name": "Team alpha", "participant_name": "Areeba Tahir - Web nexus", "phone": "03271788611", "university": "University of Central Punjab" },
+  { "team_name": "Team alpha", "participant_name": "Muhammad Usman - Web nexus", "phone": "03078345027", "university": "University of Central Punjab" },
+
+  { "team_name": "Coder Army", "participant_name": "Umer Aqeel - Web nexus", "phone": "03067521010", "university": "NASTP Institute of Information Technology" },
+  { "team_name": "Coder Army", "participant_name": "Talha Zubair - Web nexus", "phone": "03094321117", "university": "NASTP Institute of Information Technology" },
+  { "team_name": "Coder Army", "participant_name": "Ali mustafa - Web nexus", "phone": "03364440761", "university": "NASTP Institute of Information Technology" },
+
+  { "team_name": "Nexacode Solutoons", "participant_name": "Ahmad Nawaz - Web nexus", "phone": "03704556744", "university": "Minhaj University Lahore" },
+
+  { "team_name": "techSisters", "participant_name": "Sayyad Umme Aiman - Web nexus", "phone": "03045502792", "university": "BNU" },
+  { "team_name": "techSisters", "participant_name": "Maryam Tariq Qureshi - Web nexus", "phone": "03285919516", "university": "BNU" },
+  { "team_name": "techSisters", "participant_name": "Samia Rai - Web nexus", "phone": "03008586714", "university": "BNU" },
+
+  { "team_name": "Cyberwolved", "participant_name": "Mahshan Zahra - Web nexus", "phone": "03274965602", "university": "Bnu" },
+
+  { "team_name": "Battle for the Backend", "participant_name": "Muhammad Mustafa - Web nexus", "phone": "03052229343", "university": "Riphah International University" },
+  { "team_name": "Battle for the Backend", "participant_name": "Rafia Imran - Web nexus", "phone": "03264417795", "university": "Riphah International University" },
+
+  { "team_name": "Webmates", "participant_name": "Tayyaba Rehmat - Web nexus", "phone": "03271727158", "university": "University of central Punjab" },
+  { "team_name": "Webmates", "participant_name": "Aman Khan - Web nexus", "phone": "03253050241", "university": "University of central Punjab" },
+  { "team_name": "Webmates", "participant_name": "Basit Ali - Web nexus", "phone": "03116637702", "university": "University of central Punjab" },
+
+  { "team_name": "Webber's", "participant_name": "Aina Fatima - Web nexus", "phone": "03278601476", "university": "UCP" },
+  { "team_name": "Webber's", "participant_name": "Mubashara Qureshi - Web nexus", "phone": "03227279999", "university": "UCP" },
+  { "team_name": "Webber's", "participant_name": "Manahil Nasir - Web nexus", "phone": "03218681804", "university": "UCP" },
+
+  { "team_name": "Loop", "participant_name": "Sundas Abid - Web nexus", "phone": "03436696689", "university": "Comsats University Lahore" },
+  { "team_name": "shakaib", "participant_name": "arslan - Web nexus", "phone": "03839252525", "university": "UMT" },
+
+  { "team_name": "Bug&Error", "participant_name": "Hafiz Abdul Rehman - Web nexus", "phone": "03076936092", "university": "Comsats University Islamabad, Sahiwal Campus" },
+  { "team_name": "Bug&Error", "participant_name": "Muhammad Hammad Zafar - Web nexus", "phone": "03159697840", "university": "Comsats University Islamabad, Sahiwal Campus" },
+  { "team_name": "Bug&Error", "participant_name": "Bilal Ahmed - Web nexus", "phone": "03286689050", "university": "Comsats University Islamabad, Sahiwal Campus" },
+
+  { "team_name": "Special Grade", "participant_name": "Basil Saleem - Web nexus", "phone": "03219160109", "university": "Fast lahore" },
+  { "team_name": "Special Grade", "participant_name": "Raahim - Web nexus", "phone": "03008590708", "university": "Fast lahore" },
+  { "team_name": "Special Grade", "participant_name": "Taha zahid - Web nexus", "phone": "+92 303 4699914", "university": "Fast lahore" },
+
+  { "team_name": "CyberWolves", "participant_name": "Ana Sabir - Web nexus", "phone": "03497564832", "university": "UET Lahore" },
+
+  { "team_name": "Tech Titans", "participant_name": "Aimen Masood - Web nexus", "phone": "03341669929", "university": "UCP" },
+  { "team_name": "Tech Titans", "participant_name": "Hamza Iftikhar - Web nexus", "phone": "03447390669", "university": "UCP" },
+
+  { "team_name": "QUANTRALINKS", "participant_name": "AbdulRehman Bin Amjad - Web nexus", "phone": "03309244393", "university": "ITU" },
+  { "team_name": "QUANTRALINKS", "participant_name": "Muhammad Hassan babar buttar - Web nexus", "phone": "-030 2994226", "university": "ITU" },
+
+  { "team_name": "Warriors", "participant_name": "AbdulRehman Bin Amjad - Web nexus", "phone": "03309244363", "university": "ITU" },
+  { "team_name": "Warriors", "participant_name": "Hassan buttar - Web nexus", "phone": "+92 302 2994226", "university": "ITU" },
+  { "team_name": "Warriors", "participant_name": "Mufti Hamza Shaukat - Web nexus", "phone": "+92 302 2994226", "university": "ITU" },
+
+  { "team_name": "AI CHAMPS", "participant_name": "Mirza Muhammad Bilal Yousaf - Web nexus", "phone": "03256673856", "university": "Nastp Institute of Information Technology" },
+  { "team_name": "AI CHAMPS", "participant_name": "Nouman Babar - Web nexus", "phone": "+92 324 8014733", "university": "Nastp Institute of Information Technology" },
+  { "team_name": "AI CHAMPS", "participant_name": "Daniyal Asif - Web nexus", "phone": "+92 321 4223489", "university": "Nastp Institute of Information Technology" },
+
+  { "team_name": "Silicon souls", "participant_name": "Mubashir Ejaz - Web nexus", "phone": "03268833757", "university": "Umt" },
+  { "team_name": "Silicon souls", "participant_name": "Muhammad fahad - Web nexus", "phone": "03044782376", "university": "Umt" },
+  { "team_name": "Silicon souls", "participant_name": "Rana Ahmed fiaz - Web nexus", "phone": "03268833757", "university": "Umt" }
+]
+

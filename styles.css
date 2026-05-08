@@ -297,13 +297,13 @@
   
   /* ===== THEMES GRID ===== */
   .section-title {
-    font-size: 1.35rem;
+    font-size: 1.5rem;
     font-weight: 800;
     margin-bottom: 1.25rem;
   }
   .section-subtitle {
     color: var(--text-muted);
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     margin-top: -0.75rem;
     margin-bottom: 1.5rem;
   }
@@ -337,16 +337,16 @@
     cursor: not-allowed;
   }
   .theme-icon {
-    font-size: 2.5rem;
+    font-size: 3rem;
     margin-bottom: 1rem;
   }
   .theme-name {
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     font-weight: 800;
     margin-bottom: 0.5rem;
   }
   .theme-desc {
-    font-size: 0.82rem;
+    font-size: 0.9rem;
     color: var(--text-muted);
     line-height: 1.6;
     margin-bottom: 1rem;
@@ -357,7 +357,7 @@
     flex-wrap: wrap;
   }
   .pts-badge {
-    font-size: 0.72rem;
+    font-size: 0.8rem;
     font-family: var(--font-mono);
     background: var(--surface2);
     border: 1px solid var(--border);
@@ -381,7 +381,7 @@
   }
   .req-tab {
     padding: 1rem 1.5rem;
-    font-size: 1rem;
+    font-size: 1.05rem;
     font-weight: 600;
     color: var(--text-muted);
     cursor: pointer;
@@ -414,7 +414,7 @@
     background: var(--surface2);
     border-radius: 8px;
     margin-bottom: 0.5rem;
-    font-size: 1rem;
+    font-size: 1.05rem;
     line-height: 1.5;
     border: 1px solid transparent;
     transition: border-color 0.15s;
@@ -508,9 +508,9 @@
   }
   .lb-header {
     display: grid;
-    grid-template-columns: 60px 1fr 120px 120px 100px;
+    grid-template-columns: 64px 1fr 1fr 130px 130px;
     padding: 0.875rem 1.5rem;
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -520,7 +520,7 @@
   }
   .lb-row {
     display: grid;
-    grid-template-columns: 60px 1fr 120px 120px 100px;
+    grid-template-columns: 64px 1fr 1fr 130px 130px;
     padding: 1rem 1.5rem;
     align-items: center;
     border-bottom: 1px solid var(--border);
@@ -549,7 +549,7 @@
   .lb-progress { display: flex; align-items: center; gap: 0.5rem; }
   .lb-bar-wrap { flex: 1; background: var(--surface2); border-radius: 999px; height: 6px; overflow: hidden; }
   .lb-bar-fill { height: 100%; border-radius: 999px; background: var(--gradient); transition: width 0.4s; }
-  .lb-name { font-weight: 600; font-size: 1rem; }
+  .lb-name { font-weight: 600; font-size: 1.1rem; }
   .lb-pct { font-size: 0.8rem; font-family: var(--font-mono); color: var(--text-muted); width: 35px; text-align: right; }
   
   /* ===== DIAGRAMS PAGE ===== */
@@ -767,7 +767,7 @@
     .sidebar-item { justify-content: center; padding: 0.75rem; }
     .sidebar-item span:not(.icon) { display: none; }
     .main-content { max-width: calc(100% - 60px); padding: 1rem; }
-    .lb-header, .lb-row { grid-template-columns: 50px 1fr 80px 80px; }
+    .lb-header, .lb-row { grid-template-columns: 50px 1fr 1fr 90px; }
     .lb-header :last-child, .lb-row :last-child { display: none; }
     .navbar { padding: 0.75rem 1rem; }
     .welcome-section { padding: 1.25rem; }

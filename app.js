@@ -355,19 +355,36 @@ const CONFIG = {
     timerInterval: null,
     progress: {},
     designWizard: null,
+    lbTeamFilter: "all",
+    // Index of the currently focused requirement step (read-only allowed for already-completed steps).
+    reqFocusIndexByTab: { day1: 0, day2: 0 },
+    lbTeams: [],
     toastQueue: [],
   };
   
   // ===== AUTH =====
-  function login(username, password) {
-    const user = USERS_DB.find(u => u.username === username && u.password === password);
-    if (!user) return null;
-    localStorage.setItem("wn_user", JSON.stringify(user));
-    return user;
+  function getStoredToken() {
+    return localStorage.getItem("wn_token");
+  }
+
+  function setStoredToken(token) {
+    if (!token) localStorage.removeItem("wn_token");
+    else localStorage.setItem("wn_token", token);
+  }
+
+  async function apiFetch(path, options = {}) {
+    const token = getStoredToken();
+    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(path, { ...options, headers });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || `Request failed: ${res.status}`);
+    return data;
   }
   
   function logout() {
     localStorage.removeItem("wn_user");
+    setStoredToken(null);
     state.user = null;
     state.currentPage = "login";
     state.timerInterval && clearInterval(state.timerInterval);
@@ -437,7 +454,7 @@ const CONFIG = {
   
   // ===== TIMER =====
   function startTimer(userId) {
-    let start = getTimerStart(userId);
+    let start = state.timerStart || getTimerStart(userId);
     if (!start) start = saveTimerStart(userId);
     state.timerStart = start;
     updateTimerDisplay();
@@ -488,6 +505,26 @@ const CONFIG = {
   // ===== NAVIGATE =====
   function navigate(page) {
     state.currentPage = page;
+    if (page === "leaderboard") {
+      (async () => {
+        try {
+          const resp = await apiFetch("/api/leaderboard");
+          const teams = (resp.teams || resp.items || []).map(t => ({
+            teamKey: t.team_key,
+            themeId: t.theme_id || null,
+            membersCount: t.members_count || 0,
+            memberNames: t.member_names || [],
+            teamPoints: t.team_points || 0,
+            pct: t.completion_pct || 0,
+            isMyTeam: state.user?.team_name ? t.team_key === state.user.team_name : false,
+          }));
+          state.lbTeams = teams;
+          render();
+        } catch (e) {
+          toast(e.message || "Failed to load leaderboard.", "warning");
+        }
+      })();
+    }
     render();
   }
   
@@ -558,14 +595,47 @@ const CONFIG = {
     const errorEl = document.getElementById("login-error");
     errorEl.style.display = "none";
     if (!username || !password) { errorEl.textContent = "Please enter both username and password."; errorEl.style.display = "block"; return; }
-    const user = login(username, password);
-    if (!user) { errorEl.textContent = "Invalid credentials. Check your username and phone number."; errorEl.style.display = "block"; return; }
-    state.user = user;
-    const savedTheme = getUserTheme(user.id);
-    if (savedTheme) { state.selectedTheme = savedTheme; state.themeConfirmed = true; }
-    state.progress = getUserProgress(user.id);
-    render();
-    toast(`Welcome back, ${user.name}! 🎉`, "success");
+    (async () => {
+      try {
+        const auth = await apiFetch("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ username, password }),
+        });
+        setStoredToken(auth.token);
+        localStorage.setItem("wn_user", JSON.stringify(auth.user));
+        state.user = auth.user;
+
+        await hydrateUserState();
+        render();
+        toast(`Welcome back, ${state.user.name}!`, "success");
+      } catch (e) {
+        errorEl.textContent = e.message || "Login failed.";
+        errorEl.style.display = "block";
+      }
+    })();
+  }
+
+  async function hydrateUserState() {
+    if (!state.user) return;
+    const [me, day, theme, progress] = await Promise.all([
+      apiFetch("/api/me"),
+      apiFetch("/api/state/day"),
+      apiFetch(`/api/theme/${state.user.id}`),
+      apiFetch(`/api/progress/${state.user.id}`),
+    ]);
+
+    state.user = me.user;
+    localStorage.setItem("wn_user", JSON.stringify(state.user));
+
+    state.currentDay = day.currentDay ?? 1;
+
+    state.selectedTheme = theme.themeId || null;
+    state.themeConfirmed = !!theme.themeConfirmed;
+    state.timerStart = theme.timerStart ? new Date(theme.timerStart).getTime() : null;
+    if (state.selectedTheme) saveUserTheme(state.user.id, state.selectedTheme);
+
+    state.progress = progress.progress || {};
+    saveUserProgress(state.user.id, state.progress);
   }
   
   // ===== NAVBAR =====
@@ -706,22 +776,19 @@ const CONFIG = {
             </div>
             ${state.selectedTheme === theme.id ? `
               <div style="margin-top:1rem;font-size:0.8rem;color:var(--accent-pink);font-weight:700;">✓ Selected</div>
+              ${!state.themeConfirmed ? `
+                <div style="margin-top:0.9rem;display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+                  <button class="btn-ghost" onclick="event.stopPropagation(); reviewTheme('${theme.id}')">📖 Review Only</button>
+                  <button class="btn-confirm" onclick="event.stopPropagation(); confirmTheme()">🔒 Lock in Theme & Start Timer →</button>
+                </div>
+                <div style="margin-top:0.65rem;font-size:0.82rem;color:var(--text-muted);line-height:1.5;">
+                  Review requirements, then lock to start your timer.
+                </div>
+              ` : ''}
             ` : ''}
           </div>
         `).join('')}
       </div>
-      ${state.selectedTheme && !state.themeConfirmed ? `
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
-          <div>
-            <div style="font-weight:700;margin-bottom:0.25rem;">Ready to lock in ${THEMES.find(t=>t.id===state.selectedTheme)?.name}?</div>
-            <div style="font-size:0.9rem;color:var(--text-muted);">You can first open Review Only to read detailed handbook notes and requirements. Locking starts the timer and is irreversible.</div>
-          </div>
-          <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
-            <button class="btn-ghost" onclick="reviewTheme('${state.selectedTheme}')">📖 Review Only</button>
-            <button class="btn-confirm" onclick="confirmTheme()">🔒 Lock in Theme & Start Timer →</button>
-          </div>
-        </div>
-      ` : ''}
       ${state.themeConfirmed ? `
         <div style="background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.2);border-radius:var(--radius);padding:1.25rem;">
           <strong>✅ Theme locked:</strong> ${THEMES.find(t=>t.id===state.selectedTheme)?.name}. Good luck! <button onclick="navigate('requirements')" style="color:var(--accent-blue);font-weight:700;background:none;border:none;cursor:pointer;text-decoration:underline;">View Requirements →</button>
@@ -742,12 +809,21 @@ const CONFIG = {
     showModal(
       `🔒 Lock in "${theme.name}"?`,
       `This is irreversible. Your 3.5-hour countdown begins immediately. Make sure you're ready to start building!`,
-      () => {
-        state.themeConfirmed = true;
+      async () => {
+        if (!state.user) return;
+        const resp = await apiFetch(`/api/theme/${state.user.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ themeId: state.selectedTheme, themeConfirmed: true }),
+        });
+        state.themeConfirmed = !!resp.themeConfirmed;
         saveUserTheme(state.user.id, state.selectedTheme);
-        saveTimerStart(state.user.id);
+
+        // timerStart is shared per team from server, but keep local fallback too.
+        const localStart = saveTimerStart(state.user.id);
+        state.timerStart = localStart;
+
         render();
-        toast(`Theme locked! Timer started. Build ${theme.name}! 🚀`, "success");
+        toast(`Theme locked for your team! Timer started. Build ${theme.name}!`, "success");
         setTimeout(() => navigate("requirements"), 500);
       }
     );
@@ -797,7 +873,6 @@ const CONFIG = {
         </div>
         <div class="modal-actions" style="margin-top:1rem;">
           <button class="btn-ghost" onclick="closeModal()">Close</button>
-          <button class="btn-ghost" onclick="closeModal(); navigate('requirements');">Open Full Requirements</button>
           <button class="btn-confirm" onclick="closeModal(); confirmTheme();">Lock Theme & Start Timer</button>
         </div>
       </div>
@@ -822,7 +897,7 @@ const CONFIG = {
     const activeTab = state.reqTab || "day1";
     return `
       <div class="section-title">${theme.icon} ${theme.name}</div>
-      <div class="section-subtitle">Day ${state.currentDay} requirements are shown below. Review carefully before building.</div>
+      <div class="section-subtitle">Day ${state.currentDay} requirements are shown step-by-step. Mark each one complete to unlock the next.</div>
       <div style="background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.25);border-radius:var(--radius);padding:0.9rem 1rem;margin-bottom:1rem;">
         <div style="font-size:0.95rem;line-height:1.6;">
           <strong>Design expectation:</strong> include <strong>Use Case Model</strong>, <strong>Class Diagram</strong>, and <strong>Sequence Diagram</strong> aligned with requirements and implementation.
@@ -844,6 +919,17 @@ const CONFIG = {
     render();
   }
   
+  function setReqFocus(tab, index) {
+    if (!state.reqFocusIndexByTab) state.reqFocusIndexByTab = { day1: 0, day2: 0 };
+    state.reqFocusIndexByTab[tab] = index;
+    render();
+  }
+
+  function handleReqStepToggle(key, tab, nextIndex, checked) {
+    toggleProgress(key, checked);
+    if (checked) setReqFocus(tab, nextIndex);
+  }
+
   function renderReqTab(theme, tab, handbook = {}) {
     if (tab === "overview") {
       return `
@@ -923,20 +1009,95 @@ const CONFIG = {
     if (tab === "day1" || tab === "day2") {
       const items = tab === "day1" ? theme.day1 : theme.day2;
       const progress = getUserProgress(state.user.id);
+      const keys = items.map((_, i) => `${theme.id}_${tab}_${i}`);
+      const doneFlags = keys.map(k => !!progress[k]);
+      const firstIncompleteIndex = doneFlags.findIndex(d => !d);
+      const completedCount = doneFlags.filter(Boolean).length;
+      const defaultCursor = firstIncompleteIndex === -1 ? items.length - 1 : firstIncompleteIndex;
+      const requestedCursor = state.reqFocusIndexByTab?.[tab] ?? defaultCursor;
+      // Never let users jump to future (not-yet-unlocked) requirements.
+      const cursorIndex = Math.max(0, Math.min(defaultCursor, Math.min(items.length - 1, requestedCursor)));
+      const key = keys[cursorIndex];
+      const done = !!progress[key];
+      const canInteract = cursorIndex === defaultCursor && !done;
+      const nextIndex = Math.min(items.length - 1, cursorIndex + 1);
+
+      const stepsHtml = items.map((_, i) => {
+        const doneStep = doneFlags[i];
+        const isUnlocked = i <= defaultCursor;
+        const isFocus = i === cursorIndex;
+        const bg = isFocus ? "rgba(232,121,249,0.12)" : (doneStep ? "rgba(74,222,128,0.08)" : "var(--surface2)");
+        const border = isFocus ? "rgba(232,121,249,0.45)" : (doneStep ? "rgba(74,222,128,0.25)" : "var(--border)");
+        const color = doneStep ? "var(--success)" : "var(--text-muted)";
+        return `
+          <button type="button"
+            ${isUnlocked ? `onclick="setReqFocus('${tab}', ${i})"` : "disabled"}
+            style="
+              background:${bg};
+              border:1px solid ${border};
+              color:${color};
+              font-family:var(--font-mono);
+              font-weight:800;
+              padding:0.35rem 0.6rem;
+              border-radius:999px;
+              cursor:${isUnlocked ? "pointer" : "not-allowed"};
+              font-size:0.85rem;
+              opacity:${isUnlocked ? "1" : "0.55"};
+            "
+          >
+            ${i + 1}${doneStep ? " ✓" : ""}
+          </button>
+        `;
+      }).join("");
+
       return `
         <div class="req-section">
           <h3>${tab === "day1" ? "📄 Day 1 — Frontend Sprint" : "⚙️ Day 2 — Backend + Integration"}</h3>
-          ${items.map((item, i) => {
-            const key = `${theme.id}_${tab}_${i}`;
-            const done = !!progress[key];
-            return `
-              <div class="req-item" style="${done ? 'border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.03);' : ''}">
-                <input type="checkbox" ${done ? 'checked' : ''} onchange="toggleProgress('${key}', this.checked)" style="flex-shrink:0;accent-color:var(--accent-pink);width:16px;height:16px;cursor:pointer;" />
-                <span style="${done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${item.text}</span>
-                <span class="req-item-pts">${item.pts} pts</span>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+            <div style="flex:1;min-width:260px;">
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1.25rem;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+                  <div style="font-family:var(--font-mono);font-weight:800;color:var(--text-muted);font-size:0.95rem;">
+                    Phase step ${cursorIndex + 1} / ${items.length}
+                  </div>
+                  <div style="font-family:var(--font-mono);font-weight:900;color:var(--accent-teal);background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.18);padding:0.2rem 0.6rem;border-radius:999px;">
+                    ${items[cursorIndex].pts} pts
+                  </div>
+                </div>
+
+                <div style="font-size:1.05rem;line-height:1.6;">${items[cursorIndex].text}</div>
+
+                <div style="margin-top:1rem;">
+                  <label style="display:flex;align-items:center;gap:0.75rem;">
+                    <input
+                      type="checkbox"
+                      ${done ? "checked" : ""}
+                      ${(!canInteract || done) ? "disabled" : ""}
+                      onchange="handleReqStepToggle('${key}', '${tab}', ${nextIndex}, this.checked)"
+                      style="flex-shrink:0;accent-color:var(--accent-pink);width:18px;height:18px;cursor:pointer;"
+                    />
+                    <span style="color:var(--text-muted);font-weight:600;">
+                      ${done ? "Completed (read-only)" : canInteract ? "Mark this requirement complete" : "Locked (read-only)"}
+                    </span>
+                  </label>
+
+                  ${done ? `
+                    <div style="margin-top:0.8rem;font-size:0.92rem;color:var(--success);font-weight:800;">
+                      ✓ Done. You can revisit this in read-only mode.
+                    </div>
+                  ` : ""}
+                </div>
               </div>
-            `;
-          }).join('')}
+            </div>
+
+            <div style="min-width:240px;">
+              <div style="font-weight:800;color:var(--text-muted);margin-bottom:0.6rem;">Steps</div>
+              <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">${stepsHtml}</div>
+              <div style="margin-top:0.85rem;font-size:0.88rem;color:var(--text-muted);line-height:1.5;">
+                Completed: <strong style="color:var(--accent-teal)">${completedCount}</strong> / ${items.length}
+              </div>
+            </div>
+          </div>
         </div>
       `;
     }
@@ -985,9 +1146,25 @@ const CONFIG = {
   
   function toggleProgress(key, checked) {
     const progress = getUserProgress(state.user.id);
+    // Once a requirement is completed, it becomes read-only (can't be unchecked).
+    if (progress[key] && !checked) {
+      toast("Completed requirements are locked (read-only).", "warning");
+      return;
+    }
     progress[key] = checked;
     saveUserProgress(state.user.id, progress);
     state.progress = progress;
+    // Persist to Supabase (non-blocking)
+    (async () => {
+      try {
+        await apiFetch(`/api/progress/${state.user.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ progress }),
+        });
+      } catch (e) {
+        toast(e.message || "Failed to sync progress.", "warning");
+      }
+    })();
     if (checked) toast("Task marked complete! 🎉", "success");
   }
   
@@ -1036,7 +1213,13 @@ const CONFIG = {
           return `
             <label class="task-check ${done ? 'done' : ''}" style="justify-content:space-between;width:100%;max-width:600px;">
               <div style="display:flex;align-items:center;gap:0.5rem;">
-                <input type="checkbox" ${done ? 'checked' : ''} onchange="toggleProgress('${key}', this.checked)" style="accent-color:var(--accent-pink);" />
+                <input
+                  type="checkbox"
+                  ${done ? 'checked' : ''}
+                  ${done ? 'disabled' : ''}
+                  onchange="toggleProgress('${key}', this.checked)"
+                  style="accent-color:var(--accent-pink);"
+                />
                 <span>${item.text.split('—')[0]}</span>
               </div>
               <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--accent-pink);">${item.pts}pts</span>
@@ -1049,65 +1232,90 @@ const CONFIG = {
   
   // ===== LEADERBOARD PAGE =====
   function renderLeaderboardPage() {
-    // Compute leaderboard dynamically from each user's saved theme + progress.
-    // (Keeps it in sync with the rest of the UI during testing.)
-    const entries = USERS_DB.filter(u => u.role !== "admin").map(u => {
-      const themeId = getUserTheme(u.id);
-      const theme = THEMES.find(t => t.id === themeId);
-
-      const p1 = theme ? calcProgress(u.id, theme.id, 1) : { pts: 0, total: 0 };
-      const p2 = theme ? calcProgress(u.id, theme.id, 2) : { pts: 0, total: 0 };
-
-      const pts = (p1.pts || 0) + (p2.pts || 0);
-      const total = (p1.total || 0) + (p2.total || 0);
-      const pct = total > 0 ? Math.round((pts / total) * 100) : 0;
-
-      // Used only as display text; it's not a scoring rule.
-      const day = p2.pts > 0 ? 2 : 1;
-
-      return { id: u.id, name: u.name, theme: themeId, pts, pct, day };
-    });
-
-    const sorted = entries.sort((a, b) => b.pts - a.pts);
+    const teamsSorted = (state.lbTeams || []).slice();
     const rankColors = ["gold", "silver", "bronze"];
     const medals = ["🥇", "🥈", "🥉"];
+
+    const lbFilter = state.lbTeamFilter || "all";
+    const visibleTeams = lbFilter === "all" ? teamsSorted : teamsSorted.filter(t => t.teamKey === lbFilter);
+
+    const teamOptions = [
+      { id: "all", label: "All Teams" },
+      ...teamsSorted.map(t => {
+        const theme = THEMES.find(tt => tt.id === t.themeId);
+        const memberNames = (t.memberNames || []);
+        const shown = memberNames.slice(0, 4);
+        const rest = memberNames.length - shown.length;
+        const memberText = rest > 0 ? `${shown.join(", ")} +${rest} more` : shown.join(", ");
+        return { id: t.teamKey, label: `${t.teamKey}${theme ? ` — ${theme.icon} ${theme.name}` : ""} — ${memberText}` };
+      }),
+    ];
+
+    const meUserId = state.user?.id;
     return `
       <div class="section-title">🏆 Leaderboard</div>
-      <div class="section-subtitle">Live rankings based on progress. Final results are determined by judges.</div>
-      <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.15);border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:0.85rem;">
-        <strong>ℹ️ Note:</strong> Leaderboard reflects self-reported progress. Final judging scores may differ. Use this as a guide, not a final result.
+      <div class="section-subtitle">Team-wise rankings based on progress. Final results are determined by judges.</div>
+
+      <div style="background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.15);border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1rem;font-size:1rem;">
+        <div style="font-weight:900;color:var(--accent-white);margin-bottom:0.25rem;font-size:1.08rem;">
+          <strong>Final evaluation will be done by judges.</strong>
+        </div>
+        <div style="color:var(--text-muted);font-weight:600;">
+          This leaderboard reflects self-reported progress only; final scoring may differ.
+        </div>
       </div>
+
+      <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;margin-bottom:1.25rem;">
+        <div style="font-weight:800;color:var(--text-muted);">Team:</div>
+        <select
+          value="${lbFilter}"
+          onchange="setLbTeamFilter(this.value)"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:260px;"
+        >
+          ${teamOptions.map(o => `<option value="${o.id}">${o.label}</option>`).join("")}
+        </select>
+      </div>
+
       <div class="leaderboard-table">
         <div class="lb-header">
           <div>Rank</div>
-          <div>Participant</div>
-          <div>Theme</div>
+          <div>Team</div>
+          <div>Members</div>
           <div>Points</div>
           <div>Progress</div>
         </div>
-        ${sorted.map((entry, i) => {
-          const theme = THEMES.find(t => t.id === entry.theme);
-          const isMe = state.user && entry.id === state.user.id;
+        ${visibleTeams.map((team, i) => {
+          const theme = THEMES.find(t => t.id === team.themeId);
+          const isMeTeam = meUserId && (team.isMyTeam === true);
+          const memberNames = (team.memberNames || []);
+          const shown = memberNames.slice(0, 3);
+          const rest = memberNames.length - shown.length;
+          const memberText = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
           return `
-            <div class="lb-row ${isMe ? 'current-user' : ''}">
+            <div class="lb-row ${isMeTeam ? 'current-user' : ''}">
               <div class="lb-rank ${rankColors[i] || ''}">
                 ${i < 3 ? medals[i] : `#${i+1}`}
               </div>
               <div>
-                <div class="lb-name">${entry.name} ${isMe ? '<span style="font-size:0.7rem;color:var(--accent-pink);">(you)</span>' : ''}</div>
-                <div class="lb-theme">Day ${entry.day}</div>
+                <div class="lb-name">${team.teamKey}${isMeTeam ? '<span style="font-size:0.7rem;color:var(--accent-pink);margin-left:0.35rem;">(your team)</span>' : ''}</div>
+                <div class="lb-theme" style="margin-top:0.25rem;">${theme ? `${theme.icon} ${theme.name}` : "Theme not selected"}</div>
               </div>
-              <div style="font-size:0.8rem;color:var(--text-muted);">${theme ? theme.icon + ' ' + theme.name.split(' ')[0] : '—'}</div>
-              <div class="lb-pts">${entry.pts} pts</div>
+              <div class="lb-theme" style="font-size:0.9rem;color:var(--text-muted);">${memberText}</div>
+              <div class="lb-pts">${team.teamPoints} pts</div>
               <div class="lb-progress">
-                <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${entry.pct}%"></div></div>
-                <div class="lb-pct">${entry.pct}%</div>
+                <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.pct}%"></div></div>
+                <div class="lb-pct">${team.pct}%</div>
               </div>
             </div>
           `;
         }).join('')}
       </div>
     `;
+  }
+
+  function setLbTeamFilter(teamKey) {
+    state.lbTeamFilter = teamKey;
+    render();
   }
   
   // ===== DIAGRAMS PAGE =====
@@ -1482,14 +1690,31 @@ const CONFIG = {
   // ===== INIT =====
   function init() {
     const stored = getStoredUser();
-    const savedDay = localStorage.getItem("wn_current_day");
-    if (savedDay) state.currentDay = parseInt(savedDay);
+    state.designWizard = stored ? getUserDesignWizard(stored.id) : null;
+
+    const token = getStoredToken();
+    if (token) {
+      // Live session: hydrate from server
+      (async () => {
+        try {
+          // seed minimal state so render won't crash
+          if (stored) state.user = stored;
+          await hydrateUserState();
+          state.designWizard = getUserDesignWizard(state.user.id);
+          state.currentPage = "overview";
+          render();
+        } catch {
+          // token invalid or server not ready -> fall back to login
+          logout();
+        }
+      })();
+      return;
+    }
+
+    // No token: show login; keep local cache only for UI continuity
     if (stored) {
       state.user = stored;
-      const savedTheme = getUserTheme(stored.id);
-      if (savedTheme) { state.selectedTheme = savedTheme; state.themeConfirmed = true; }
       state.progress = getUserProgress(stored.id);
-      state.designWizard = getUserDesignWizard(stored.id);
       state.currentPage = "overview";
     }
     render();
@@ -1511,6 +1736,8 @@ const CONFIG = {
   window.closeModal = closeModal;
   window.modalConfirm = modalConfirm;
   window.setReqTab = setReqTab;
+  window.setReqFocus = setReqFocus;
+  window.handleReqStepToggle = handleReqStepToggle;
   window.toggleProgress = toggleProgress;
   window.toast = toast;
   window.setDay = setDay;
@@ -1518,5 +1745,6 @@ const CONFIG = {
   window.goDesignStep = goDesignStep;
   window.lockDesignFocus = lockDesignFocus;
   window.clearTestingData = clearTestingData;
+  window.setLbTeamFilter = setLbTeamFilter;
   
   init();
