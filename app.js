@@ -1665,8 +1665,8 @@ const CONFIG = {
       })() : ""}
 
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;" class="scroll-reveal delay-4">
-        <div class="leaderboard-table" style="min-width:620px;">
-          <div class="lb-header" style="grid-template-columns:56px 1fr 1fr auto auto auto;">
+        <div class="leaderboard-table" style="min-width:560px;">
+          <div class="lb-header">
             <div>Rank</div>
             <div>Team</div>
             <div>Members</div>
@@ -1687,7 +1687,7 @@ const CONFIG = {
               const rowRankClass = i === 0 ? "lb-row-rank1" : i === 1 ? "lb-row-rank2" : i === 2 ? "lb-row-rank3" : "";
               const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i+1}`;
               return `
-                <div class="lb-row ${rowRankClass} ${isMeTeam ? 'current-user' : ''}" style="animation-delay:${i * 0.06}s;grid-template-columns:56px 1fr 1fr auto auto auto;">
+                <div class="lb-row ${rowRankClass} ${isMeTeam ? 'current-user' : ''}" style="animation-delay:${i * 0.06}s;">
                   <div class="lb-rank">
                     <div class="lb-rank-badge ${rankClass}">${medal}</div>
                   </div>
@@ -1721,7 +1721,53 @@ const CONFIG = {
 
   function setLbDay(day) {
     state.lbDay = day;
-    render();
+    // Re-fetch leaderboard so scores recalculate for the selected day
+    (async () => {
+      try {
+        const resp = await apiFetch("/api/leaderboard");
+        const teams = (resp.teams || resp.items || []).map(t => {
+          const themeId = t.theme_id || null;
+          const theme = THEMES.find(th => th.id === themeId);
+          let teamPoints = 0, totalPossible = 0;
+          if (theme) {
+            const allItems = [...theme.day1, ...theme.day2];
+            totalPossible = allItems.reduce((s, item) => s + item.pts, 0);
+            if (typeof t.team_progress_points === "number") {
+              teamPoints = t.team_progress_points;
+            } else if (t.progress && typeof t.progress === "object") {
+              Object.entries(t.progress).forEach(([key, done]) => {
+                if (!done) return;
+                const parts = key.split("_");
+                const idx = parseInt(parts[parts.length - 1]);
+                const dayPart = parts[parts.length - 2];
+                if (isNaN(idx)) return;
+                const dayItems = dayPart === "day1" ? theme.day1 : theme.day2;
+                if (dayItems && dayItems[idx]) teamPoints += dayItems[idx].pts;
+              });
+            } else {
+              teamPoints = typeof t.team_points === "number" ? t.team_points : 0;
+            }
+          }
+          const pct = totalPossible > 0 ? Math.round((teamPoints / totalPossible) * 100) : 0;
+          return {
+            teamKey: t.team_key,
+            themeId,
+            membersCount: t.members_count || 0,
+            memberNames: t.member_names || [],
+            teamPoints,
+            pct,
+            progressMap: (t.progress && typeof t.progress === "object") ? t.progress : {},
+            isMyTeam: state.user?.team_name ? t.team_key === state.user.team_name : false,
+          };
+        });
+        teams.sort((a, b) => b.teamPoints - a.teamPoints);
+        state.lbTeams = teams;
+        render();
+      } catch (e) {
+        // If fetch fails just re-render with existing data
+        render();
+      }
+    })();
   }
   
   // ===== DIAGRAMS PAGE =====
