@@ -505,7 +505,14 @@ const CONFIG = {
   // ===== NAVIGATE =====
   function buildLbTeams(apiItems) {
     return apiItems.map(t => {
-      const progressMap = (t.progress && typeof t.progress === "object") ? t.progress : {};
+      // Log FULL raw object so we can see exactly what backend sends
+      console.log("RAW TEAM FROM API:", JSON.stringify(t));
+      const progressMap =
+        (t.progress_map && typeof t.progress_map === "object") ? t.progress_map :
+        (t.progressMap && typeof t.progressMap === "object") ? t.progressMap :
+        (t.progress && typeof t.progress === "object") ? t.progress :
+        {};
+      console.log("team:", t.team_key, "progressMap resolved:", progressMap);
       return {
         teamKey: t.team_key,
         themeId: t.theme_id || null,
@@ -2252,19 +2259,18 @@ function renderUseCaseDiagram(theme) {
   function setDay(day) {
     state.currentDay = day;
     localStorage.setItem("wn_current_day", String(day));
-    // Persist to server so ALL participants see the unlock immediately
     (async () => {
       try {
         await apiFetch("/api/state/day", {
           method: "PUT",
           body: JSON.stringify({ currentDay: day }),
         });
+        toast(`Day ${day} unlocked ✅ — all participants will see this now.`, "success");
       } catch (e) {
-        // Server may not support PUT /api/state/day yet — local change still works
-        console.warn("setDay API call failed:", e.message);
+        console.error("setDay API call failed:", e.message);
+        toast(`⚠️ Server update FAILED: ${e.message} — participants won't see Day ${day}. Fix your backend!`, "warning");
       }
     })();
-    toast(`Switched to Day ${day}. Day 2 requirements ${day >= 2 ? "unlocked ✅" : "locked 🔒"} for all participants.`, "success");
     render();
   }
 
@@ -2402,30 +2408,45 @@ function renderUseCaseDiagram(theme) {
   function attachPageEvents() {}
   
   // ===== INIT =====
+  function startDayPoller() {
+    setInterval(async () => {
+      if (!state.user) return;
+      try {
+        const resp = await apiFetch("/api/state/day");
+        const newDay = resp.currentDay ?? state.currentDay;
+        if (newDay !== state.currentDay) {
+          state.currentDay = newDay;
+          localStorage.setItem("wn_current_day", String(newDay));
+          render();
+          if (state.user.role !== "admin") {
+            toast("Day " + newDay + " is now live! Requirements unlocked.", "success");
+          }
+        }
+      } catch {}
+    }, 10000);
+  }
+
   function init() {
     const stored = getStoredUser();
     state.designWizard = stored ? getUserDesignWizard(stored.id) : null;
 
     const token = getStoredToken();
     if (token) {
-      // Live session: hydrate from server
       (async () => {
         try {
-          // seed minimal state so render won't crash
           if (stored) state.user = stored;
           await hydrateUserState();
           state.designWizard = getUserDesignWizard(state.user.id);
           state.currentPage = "overview";
           render();
+          startDayPoller();
         } catch {
-          // token invalid or server not ready -> fall back to login
           logout();
         }
       })();
       return;
     }
 
-    // No token: show login; keep local cache only for UI continuity
     if (stored) {
       state.user = stored;
       state.progress = getUserProgress(stored.id);
@@ -2433,7 +2454,6 @@ function renderUseCaseDiagram(theme) {
     }
     render();
 
-    // Keep "Day 2" unlock in sync across tabs/windows.
     window.addEventListener("storage", (e) => {
       if (e.key !== "wn_current_day") return;
       if (!state.user) return;
