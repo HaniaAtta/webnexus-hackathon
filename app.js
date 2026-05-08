@@ -503,70 +503,40 @@ const CONFIG = {
   }
   
   // ===== NAVIGATE =====
+  function buildLbTeams(apiItems) {
+    return apiItems.map(t => {
+      const progressMap = (t.progress && typeof t.progress === "object") ? t.progress : {};
+      return {
+        teamKey: t.team_key,
+        themeId: t.theme_id || null,
+        membersCount: t.members_count || 0,
+        memberNames: t.member_names || [],
+        progressMap,
+        isMyTeam: state.user?.team_name ? t.team_key === state.user.team_name : false,
+      };
+    });
+  }
+
   function navigate(page) {
     if (page === "admin") state.adminTeams = null;
     state.currentPage = page;
     closeSidebarOnMobile();
     if (page === "leaderboard") {
+      state.lbLoading = true;
+      render();
       (async () => {
         try {
           const resp = await apiFetch("/api/leaderboard");
-          const teams = (resp.teams || resp.items || []).map(t => {
-            const themeId = t.theme_id || null;
-            const theme = THEMES.find(th => th.id === themeId);
-
-            // Use the actual accumulated progress points from the API response.
-            // The API stores progress as a map of { key: true } where each key
-            // encodes themeId + day + itemIndex. We reconstruct real pts by
-            // looking up the item's pts from THEMES data using the progress keys.
-            let teamPoints = 0, totalPossible = 0;
-            if (theme) {
-              const allItems = [...theme.day1, ...theme.day2];
-              totalPossible = allItems.reduce((s, item) => s + item.pts, 0);
-
-              // Prefer a pre-computed points value from the API if the server
-              // sends it (e.g. as team_progress_points or team_pts).
-              // Otherwise fall back to reconstructing from the progress map.
-              if (typeof t.team_progress_points === "number") {
-                teamPoints = t.team_progress_points;
-              } else if (t.progress && typeof t.progress === "object") {
-                // progress is a map: { "ai_task_day1_0": true, ... }
-                Object.entries(t.progress).forEach(([key, done]) => {
-                  if (!done) return;
-                  // key format: themeId_dayN_index
-                  const parts = key.split("_");
-                  // last part = index, second-to-last = "dayN", rest = themeId
-                  const idx = parseInt(parts[parts.length - 1]);
-                  const dayPart = parts[parts.length - 2]; // "day1" or "day2"
-                  if (isNaN(idx)) return;
-                  const dayItems = dayPart === "day1" ? theme.day1 : theme.day2;
-                  if (dayItems && dayItems[idx]) teamPoints += dayItems[idx].pts;
-                });
-              } else {
-                // Fallback: if the server only gave us a raw numeric count,
-                // use it directly as points (server should compute correct pts).
-                teamPoints = typeof t.team_points === "number" ? t.team_points : 0;
-              }
-            }
-            const pct = totalPossible > 0 ? Math.round((teamPoints / totalPossible) * 100) : 0;
-            return {
-              teamKey: t.team_key,
-              themeId,
-              membersCount: t.members_count || 0,
-              memberNames: t.member_names || [],
-              teamPoints,
-              pct,
-              progressMap: (t.progress && typeof t.progress === "object") ? t.progress : {},
-              isMyTeam: state.user?.team_name ? t.team_key === state.user.team_name : false,
-            };
-          });
-          teams.sort((a, b) => b.teamPoints - a.teamPoints);
-          state.lbTeams = teams;
+          state.lbTeams = buildLbTeams(resp.teams || resp.items || []);
+          state.lbLoading = false;
           render();
         } catch (e) {
+          state.lbLoading = false;
           toast(e.message || "Failed to load leaderboard.", "warning");
+          render();
         }
       })();
+      return;
     }
     render();
   }
@@ -1569,61 +1539,66 @@ const CONFIG = {
   }
 
   function renderLeaderboardPage() {
-    const rawTeams = (state.lbTeams || []).slice();
-    const lbFilter = state.lbTeamFilter || "all";
-    const lbDay = state.lbDay || 1; // Day tab: 1 or 2
+    // Show loading skeleton while API call is in-flight
+    if (state.lbLoading) {
+      return `
+        <div class="section-title">🏆 Leaderboard</div>
+        <div class="section-subtitle">Loading team rankings...</div>
+        <div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:1.5rem;">
+          ${[1,2,3,4,5].map(() => `
+            <div style="height:64px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);animation:pulse 1.4s ease-in-out infinite;"></div>
+          `).join('')}
+        </div>
+      `;
+    }
 
-    // Re-score teams using calcProgressFromMap for the selected day
+    const rawTeams = (state.lbTeams || []).slice();
+    const lbDay = state.lbDay || 1;
+
+    // Score every team for the selected day using the same calcProgressFromMap helper
     const teamsSorted = rawTeams.map(team => {
       const p = calcProgressFromMap(team.progressMap || {}, team.themeId, lbDay);
-      return { ...team, dayPts: p.pts, dayPct: p.pct, dayDone: p.done, dayTotal: p.totalItems, dayTotalPts: p.total };
+      return { ...team, dayPts: p.pts, dayPct: p.pct, dayDone: p.done, dayTotal: p.totalItems };
     }).sort((a, b) => b.dayPts - a.dayPts);
 
+    const meUserId = state.user?.id;
+    const top3 = teamsSorted.slice(0, 3);
+    const lbFilter = state.lbTeamFilter || "all";
     const visibleTeams = lbFilter === "all" ? teamsSorted : teamsSorted.filter(t => t.teamKey === lbFilter);
 
     const teamOptions = [
       { id: "all", label: "All Teams" },
       ...teamsSorted.map(t => {
         const theme = THEMES.find(tt => tt.id === t.themeId);
-        const memberNames = (t.memberNames || []);
-        const shown = memberNames.slice(0, 4);
-        const rest = memberNames.length - shown.length;
-        const memberText = rest > 0 ? `${shown.join(", ")} +${rest} more` : shown.join(", ");
-        return { id: t.teamKey, label: `${t.teamKey}${theme ? ` — ${theme.icon} ${theme.name}` : ""} — ${memberText}` };
+        const shown = (t.memberNames || []).slice(0, 3).join(", ");
+        return { id: t.teamKey, label: `${t.teamKey}${theme ? " — " + theme.name : ""}` };
       }),
     ];
 
-    const meUserId = state.user?.id;
-    const top3 = teamsSorted.slice(0, 3);
-
-    // Podium — only show when viewing all and there are teams
+    // Podium — only when showing all teams
     const podiumHtml = (lbFilter === "all" && top3.length > 0) ? (() => {
       const podiumOrder = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3;
-      const rankOf = (t) => top3.indexOf(t);
-      const medals = ['🥇', '🥈', '🥉'];
-      const rankClasses = ['rank-2', 'rank-1', 'rank-3'];
+      const medals = ["🥇","🥈","🥉"];
+      const rankClasses = ["rank-2","rank-1","rank-3"];
       return `
         <div class="lb-podium scroll-reveal delay-1">
-          ${podiumOrder.map((team, podiumIdx) => {
-            if (!team) return '';
+          ${podiumOrder.map((team, pi) => {
+            if (!team) return "";
+            const rank = top3.indexOf(team);
             const theme = THEMES.find(t => t.id === team.themeId);
-            const rank = rankOf(team);
-            const rankClass = rankClasses[podiumIdx];
-            const medal = medals[rank];
-            const isMeTeam = meUserId && team.isMyTeam;
             return `
-              <div class="lb-podium-item ${rankClass}">
-                <div class="lb-podium-medal">${medal}</div>
-                <div class="lb-podium-name">${team.teamKey}${isMeTeam ? ' <span style="color:var(--accent-pink);font-size:0.7rem;">(you)</span>' : ''}</div>
-                <div class="lb-podium-theme">${theme ? `${theme.icon} ${theme.name}` : '—'}</div>
+              <div class="lb-podium-item ${rankClasses[pi]}">
+                <div class="lb-podium-medal">${medals[rank]}</div>
+                <div class="lb-podium-name">${team.teamKey}${meUserId && team.isMyTeam ? ' <span style="color:var(--accent-pink);font-size:0.7rem;">(you)</span>' : ""}</div>
+                <div class="lb-podium-theme">${theme ? theme.icon + " " + theme.name : "—"}</div>
                 <div class="lb-podium-pts">${team.dayPts}</div>
-                <div class="lb-podium-pts-label">pts · ${team.dayDone}/${team.dayTotal} reqs</div>
+                <div class="lb-podium-pts-label">${team.dayPct}% · ${team.dayDone}/${team.dayTotal} reqs</div>
               </div>
             `;
-          }).join('')}
+          }).join("")}
         </div>
       `;
-    })() : '';
+    })() : "";
 
     return `
       <div class="section-title scroll-reveal">🏆 Leaderboard</div>
@@ -1634,13 +1609,13 @@ const CONFIG = {
         <div style="color:var(--text-muted);font-size:0.9rem;">This leaderboard reflects self-reported progress only — scoring may differ after judging.</div>
       </div>
 
-      <!-- Day selector tabs -->
-      <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;" class="scroll-reveal delay-2">
+      <!-- Day selector -->
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.25rem;" class="scroll-reveal delay-2">
         ${[1,2].map(d => `
-          <button onclick="setLbDay(${d})" style="padding:0.5rem 1.1rem;border-radius:999px;font-weight:700;font-size:0.85rem;border:1.5px solid ${lbDay===d?'var(--accent-pink)':'var(--border)'};background:${lbDay===d?'rgba(232,121,249,0.12)':'var(--surface2)'};color:${lbDay===d?'var(--accent-pink)':'var(--text-muted)'};cursor:pointer;transition:all 0.15s;">
-            ${d === 1 ? '📄 Day 1 — Frontend Sprint' : '⚙️ Day 2 — Backend + Integration'}
+          <button onclick="setLbDay(${d})" style="padding:0.5rem 1.1rem;border-radius:999px;font-weight:700;font-size:0.85rem;border:1.5px solid ${lbDay===d?"var(--accent-pink)":"var(--border)"};background:${lbDay===d?"rgba(232,121,249,0.12)":"var(--surface2)"};color:${lbDay===d?"var(--accent-pink)":"var(--text-muted)"};cursor:pointer;transition:all 0.15s;">
+            ${d === 1 ? "📄 Day 1 — Frontend Sprint" : "⚙️ Day 2 — Backend + Integration"}
           </button>
-        `).join('')}
+        `).join("")}
       </div>
 
       ${podiumHtml}
@@ -1648,29 +1623,18 @@ const CONFIG = {
       <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem;" class="scroll-reveal delay-3">
         <div style="font-weight:800;color:var(--text-muted);font-size:0.9rem;">Filter team:</div>
         <select onchange="setLbTeamFilter(this.value)"
-          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:220px;max-width:100%;transition:border-color 0.15s;"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:200px;max-width:100%;transition:border-color 0.15s;"
           onfocus="this.style.borderColor='var(--accent-pink)'" onblur="this.style.borderColor='var(--border)'">
-          ${teamOptions.map(o => `<option value="${o.id}" ${lbFilter===o.id?'selected':''}>${o.label}</option>`).join("")}
+          ${teamOptions.map(o => `<option value="${o.id}" ${lbFilter===o.id?"selected":""}>${o.label}</option>`).join("")}
         </select>
       </div>
 
-      ${lbFilter !== "all" ? (() => {
-        const t = teamsSorted.find(t => t.teamKey === lbFilter);
-        if (!t) return "";
-        const theme = THEMES.find(th => th.id === t.themeId);
-        return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.9rem;" class="scroll-reveal">
-          <strong>${t.teamKey}</strong>${theme ? ` — ${theme.icon} ${theme.name}` : ""}<br/>
-          <span style="color:var(--text-muted);">${(t.memberNames||[]).join(", ")}</span>
-        </div>`;
-      })() : ""}
-
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;" class="scroll-reveal delay-4">
-        <div class="leaderboard-table" style="min-width:560px;">
+        <div class="leaderboard-table" style="min-width:500px;">
           <div class="lb-header">
             <div>Rank</div>
             <div>Team</div>
             <div>Members</div>
-            <div>Reqs Done</div>
             <div>Points</div>
             <div>Progress</div>
           </div>
@@ -1678,28 +1642,21 @@ const CONFIG = {
             ? `<div style="padding:2rem;text-align:center;color:var(--text-muted);">No teams found.</div>`
             : visibleTeams.map((team, i) => {
               const theme = THEMES.find(t => t.id === team.themeId);
-              const isMeTeam = meUserId && (team.isMyTeam === true);
-              const memberNames = (team.memberNames || []);
-              const shown = memberNames.slice(0, 3);
-              const rest = memberNames.length - shown.length;
-              const memberText = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+              const isMeTeam = meUserId && team.isMyTeam === true;
+              const shown = (team.memberNames || []).slice(0, 3);
+              const rest = (team.memberNames || []).length - shown.length;
+              const memberText = rest > 0 ? shown.join(", ") + " +" + rest : shown.join(", ");
               const rankClass = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "";
               const rowRankClass = i === 0 ? "lb-row-rank1" : i === 1 ? "lb-row-rank2" : i === 2 ? "lb-row-rank3" : "";
-              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i+1}`;
+              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "#" + (i+1);
               return `
-                <div class="lb-row ${rowRankClass} ${isMeTeam ? 'current-user' : ''}" style="animation-delay:${i * 0.06}s;">
-                  <div class="lb-rank">
-                    <div class="lb-rank-badge ${rankClass}">${medal}</div>
-                  </div>
+                <div class="lb-row ${rowRankClass} ${isMeTeam ? "current-user" : ""}" style="animation-delay:${i*0.06}s;">
+                  <div class="lb-rank"><div class="lb-rank-badge ${rankClass}">${medal}</div></div>
                   <div>
-                    <div class="lb-name">${team.teamKey}${isMeTeam ? '<span style="font-size:0.7rem;color:var(--accent-pink);margin-left:0.35rem;">(your team)</span>' : ''}</div>
-                    <div class="lb-theme" style="margin-top:0.2rem;">${theme ? `${theme.icon} ${theme.name}` : "Theme not selected"}</div>
+                    <div class="lb-name">${team.teamKey}${isMeTeam ? '<span style="font-size:0.7rem;color:var(--accent-pink);margin-left:0.35rem;">(your team)</span>' : ""}</div>
+                    <div class="lb-theme" style="margin-top:0.2rem;">${theme ? theme.icon + " " + theme.name : "Theme not selected"}</div>
                   </div>
                   <div class="lb-theme" style="font-size:0.85rem;color:var(--text-muted);align-self:center;">${memberText || "—"}</div>
-                  <div style="align-self:center;text-align:center;">
-                    <div style="font-family:var(--font-mono);font-weight:800;font-size:1rem;color:var(--accent-teal);">${team.dayDone}<span style="color:var(--text-muted);font-size:0.75rem;font-weight:500;">/${team.dayTotal}</span></div>
-                    <div style="font-size:0.68rem;color:var(--text-muted);">requirements</div>
-                  </div>
                   <div class="lb-pts" style="align-self:center;">${team.dayPts} <span style="font-size:0.72rem;color:var(--text-muted);font-weight:500;">pts</span></div>
                   <div class="lb-progress" style="align-self:center;">
                     <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.dayPct}%"></div></div>
@@ -1707,13 +1664,12 @@ const CONFIG = {
                   </div>
                 </div>
               `;
-            }).join('')
+            }).join("")
           }
         </div>
       </div>
     `;
   }
-
   function setLbTeamFilter(teamKey) {
     state.lbTeamFilter = teamKey;
     render();
@@ -1721,53 +1677,7 @@ const CONFIG = {
 
   function setLbDay(day) {
     state.lbDay = day;
-    // Re-fetch leaderboard so scores recalculate for the selected day
-    (async () => {
-      try {
-        const resp = await apiFetch("/api/leaderboard");
-        const teams = (resp.teams || resp.items || []).map(t => {
-          const themeId = t.theme_id || null;
-          const theme = THEMES.find(th => th.id === themeId);
-          let teamPoints = 0, totalPossible = 0;
-          if (theme) {
-            const allItems = [...theme.day1, ...theme.day2];
-            totalPossible = allItems.reduce((s, item) => s + item.pts, 0);
-            if (typeof t.team_progress_points === "number") {
-              teamPoints = t.team_progress_points;
-            } else if (t.progress && typeof t.progress === "object") {
-              Object.entries(t.progress).forEach(([key, done]) => {
-                if (!done) return;
-                const parts = key.split("_");
-                const idx = parseInt(parts[parts.length - 1]);
-                const dayPart = parts[parts.length - 2];
-                if (isNaN(idx)) return;
-                const dayItems = dayPart === "day1" ? theme.day1 : theme.day2;
-                if (dayItems && dayItems[idx]) teamPoints += dayItems[idx].pts;
-              });
-            } else {
-              teamPoints = typeof t.team_points === "number" ? t.team_points : 0;
-            }
-          }
-          const pct = totalPossible > 0 ? Math.round((teamPoints / totalPossible) * 100) : 0;
-          return {
-            teamKey: t.team_key,
-            themeId,
-            membersCount: t.members_count || 0,
-            memberNames: t.member_names || [],
-            teamPoints,
-            pct,
-            progressMap: (t.progress && typeof t.progress === "object") ? t.progress : {},
-            isMyTeam: state.user?.team_name ? t.team_key === state.user.team_name : false,
-          };
-        });
-        teams.sort((a, b) => b.teamPoints - a.teamPoints);
-        state.lbTeams = teams;
-        render();
-      } catch (e) {
-        // If fetch fails just re-render with existing data
-        render();
-      }
-    })();
+    render();
   }
   
   // ===== DIAGRAMS PAGE =====
@@ -2263,15 +2173,25 @@ function renderUseCaseDiagram(theme) {
           <div class="stat-sub">Available challenges</div>
         </div>
       </div>
-      <div class="section-title" style="font-size:1rem;margin-bottom:0.75rem;">Switch Day</div>
-      <div class="admin-controls">
-        <button class="btn-day ${state.currentDay===1?'active-day':''}" onclick="setDay(1)">📄 Day 1 — Frontend</button>
-        <button class="btn-day ${state.currentDay===2?'active-day':''}" onclick="setDay(2)">⚙️ Day 2 — Backend</button>
+      <!-- Day unlock control — prominent -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;margin-bottom:1.5rem;">
+        <div style="font-weight:800;font-size:1rem;margin-bottom:0.35rem;">🔓 Day Unlock Control</div>
+        <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem;">Currently active: <strong style="color:var(--accent-teal);">Day ${state.currentDay} — ${state.currentDay === 1 ? 'Frontend Sprint' : 'Backend + Integration'}</strong></div>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <button onclick="setDay(1)" style="padding:0.65rem 1.4rem;border-radius:10px;font-weight:700;font-size:0.92rem;border:2px solid ${state.currentDay===1?'var(--accent-teal)':'var(--border)'};background:${state.currentDay===1?'rgba(45,212,191,0.12)':'var(--surface2)'};color:${state.currentDay===1?'var(--accent-teal)':'var(--text-muted)'};cursor:pointer;transition:all 0.15s;">
+            📄 Day 1 — Frontend Sprint ${state.currentDay===1?'✓ Active':''}
+          </button>
+          <button onclick="setDay(2)" style="padding:0.65rem 1.4rem;border-radius:10px;font-weight:700;font-size:0.92rem;border:2px solid ${state.currentDay===2?'var(--accent-pink)':'rgba(232,121,249,0.3)'};background:${state.currentDay===2?'rgba(232,121,249,0.12)':'rgba(232,121,249,0.05)'};color:${state.currentDay===2?'var(--accent-pink)':'var(--accent-pink)'};cursor:pointer;transition:all 0.15s;">
+            ⚙️ Unlock Day 2 — Backend ${state.currentDay===2?'✓ Active':'🔒'}
+          </button>
+        </div>
+        ${state.currentDay === 2 ? `<div style="margin-top:0.75rem;font-size:0.82rem;color:var(--success);">✅ Day 2 is live — all participants can now see backend requirements.</div>` : `<div style="margin-top:0.75rem;font-size:0.82rem;color:var(--text-muted);">Day 2 requirements are hidden from participants until you click Unlock.</div>`}
       </div>
+
       <div class="section-title" style="font-size:1rem;margin-bottom:0.75rem;">Teams & Progress</div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-        <div class="leaderboard-table" style="min-width:600px;">
-          <div class="lb-header" style="grid-template-columns:50px 1fr 1fr 100px 120px;">
+        <div class="leaderboard-table" style="min-width:500px;">
+          <div class="lb-header">
             <div>#</div><div>Team</div><div>Members</div><div>Points</div><div>Progress</div>
           </div>
           ${teams.length === 0 ? `<div style="padding:1.5rem;text-align:center;color:var(--text-muted);">Loading teams...</div>` :
@@ -2282,7 +2202,7 @@ function renderUseCaseDiagram(theme) {
               const rest = memberNames.length - shown.length;
               const memberText = rest > 0 ? `${shown.join(", ")} +${rest} more` : (shown.join(", ") || "—");
               return `
-                <div class="lb-row" style="grid-template-columns:50px 1fr 1fr 100px 120px;">
+                <div class="lb-row">
                   <div style="font-family:var(--font-mono);font-weight:700;">${i+1}</div>
                   <div>
                     <div class="lb-name">${t.team_key}</div>
