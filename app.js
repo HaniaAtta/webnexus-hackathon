@@ -680,7 +680,11 @@ const CONFIG = {
     state.user = me.user;
     localStorage.setItem("wn_user", JSON.stringify(state.user));
 
-    state.currentDay = day.currentDay ?? 1;
+    // Prefer server value; fall back to whatever localStorage has (set by admin via setDay)
+    const localDay = parseInt(localStorage.getItem("wn_current_day") || "1");
+    state.currentDay = day.currentDay ?? localDay;
+    // Keep localStorage in sync with server value
+    localStorage.setItem("wn_current_day", String(state.currentDay));
 
     state.selectedTheme = theme.themeId || null;
     state.themeConfirmed = !!theme.themeConfirmed;
@@ -1056,29 +1060,41 @@ const CONFIG = {
         <div class="req-section">
           <h3>📐 Required Design Artifacts</h3>
           <p style="font-size:0.9rem;color:var(--text-muted);line-height:1.6;margin-bottom:0.8rem;">
-            Before implementation, prepare design documents that map directly to your selected theme requirements.
+            Before implementation, prepare these design documents. They map directly to your theme's architecture.
+            <strong style="color:var(--accent-pink);">Click any diagram to expand it.</strong>
           </p>
-          <div class="req-item"><span>1️⃣</span><span><strong>Use Case Model:</strong> actors, use-cases, and system boundaries.</span></div>
-          <div class="req-item"><span>2️⃣</span><span><strong>Class Diagram:</strong> entities/tables, relationships, and key attributes.</span></div>
-          <div class="req-item"><span>3️⃣</span><span><strong>Sequence Diagram:</strong> request/response flow for login + core feature.</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.6rem;margin-bottom:1.25rem;">
+            <div class="req-item" style="padding:0.4rem 0.75rem;background:rgba(232,121,249,0.07);border-radius:8px;border:1px solid rgba(232,121,249,0.2);"><span>1️⃣</span><span><strong>Use Case Model:</strong> Actors, use-cases, system boundaries</span></div>
+            <div class="req-item" style="padding:0.4rem 0.75rem;background:rgba(56,189,248,0.07);border-radius:8px;border:1px solid rgba(56,189,248,0.2);"><span>2️⃣</span><span><strong>Class Diagram:</strong> Entities, relationships, attributes</span></div>
+            <div class="req-item" style="padding:0.4rem 0.75rem;background:rgba(45,212,191,0.07);border-radius:8px;border:1px solid rgba(45,212,191,0.2);"><span>3️⃣</span><span><strong>Sequence Diagram:</strong> Login + core feature flow</span></div>
+          </div>
         </div>
         <div class="diagram-grid">
-          <div class="diagram-card">
-            <div class="diagram-preview">${renderUseCaseDiagram(theme)}</div>
+          <div class="diagram-card" onclick="openDiagramModal('usecase','${theme.id}')" style="cursor:pointer;" title="Click to expand">
+            <div class="diagram-preview" style="position:relative;">
+              ${renderUseCaseDiagram(theme)}
+              <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);border-radius:6px;padding:2px 7px;font-size:0.7rem;color:#aaa;pointer-events:none;">🔍 Expand</div>
+            </div>
             <div class="diagram-info">
               <div class="diagram-title">Use Case Model</div>
               <div class="diagram-subtitle">Actors and functional scope</div>
             </div>
           </div>
-          <div class="diagram-card">
-            <div class="diagram-preview">${renderClassDiagram(theme)}</div>
+          <div class="diagram-card" onclick="openDiagramModal('class','${theme.id}')" style="cursor:pointer;" title="Click to expand">
+            <div class="diagram-preview" style="position:relative;">
+              ${renderClassDiagram(theme)}
+              <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);border-radius:6px;padding:2px 7px;font-size:0.7rem;color:#aaa;pointer-events:none;">🔍 Expand</div>
+            </div>
             <div class="diagram-info">
               <div class="diagram-title">Class Diagram</div>
               <div class="diagram-subtitle">Data model alignment with DB/API</div>
             </div>
           </div>
-          <div class="diagram-card">
-            <div class="diagram-preview">${renderSequenceDiagram(theme)}</div>
+          <div class="diagram-card" onclick="openDiagramModal('sequence','${theme.id}')" style="cursor:pointer;" title="Click to expand">
+            <div class="diagram-preview" style="position:relative;">
+              ${renderSequenceDiagram(theme)}
+              <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);border-radius:6px;padding:2px 7px;font-size:0.7rem;color:#aaa;pointer-events:none;">🔍 Expand</div>
+            </div>
             <div class="diagram-info">
               <div class="diagram-title">Sequence Diagram</div>
               <div class="diagram-subtitle">Interaction flow across layers</div>
@@ -1161,10 +1177,11 @@ const CONFIG = {
                   ${items[cursorIndex].text}
                 </div>
 
-                <!-- Vibe note -->
+                <!-- Vibe note (active only) -->
                 ${isActiveCursor && !isDone ? `
-                  <div style="font-size:0.82rem;color:var(--accent-pink);margin-top:0.6rem;opacity:0.8;">
-                    ✦ Build this your way — use any stack, pattern, or creative approach you want.
+                  <div style="margin-top:0.75rem;padding:0.6rem 0.8rem;background:linear-gradient(135deg,rgba(232,121,249,0.07),rgba(56,189,248,0.07));border:1px solid rgba(232,121,249,0.2);border-radius:8px;">
+                    <div style="font-size:0.78rem;font-weight:700;color:var(--accent-pink);margin-bottom:0.3rem;">✦ Vibe Coding Hint</div>
+                    <div style="font-size:0.79rem;color:var(--text-muted);line-height:1.55;">${getVibeHint(tab, cursorIndex, theme.id)}</div>
                   </div>
                 ` : ''}
 
@@ -1201,6 +1218,11 @@ const CONFIG = {
               ` : ''}
             </div>
 
+          </div>
+
+          <!-- Vibe Coding Toolbox — always visible below task area -->
+          <div style="margin-top:1.25rem;">
+            ${renderVibeToolbox(tab)}
           </div>
         </div>
       `;
@@ -1248,6 +1270,107 @@ const CONFIG = {
     return '';
   }
   
+  // ===== VIBE CODING HELPERS =====
+  // Per-task contextual hints — gives students creative implementation ideas
+  const VIBE_HINTS = {
+    day1: [
+      "Try a full-bleed hero with a CSS gradient mesh or animated blob background. Use Framer Motion or GSAP ScrollTrigger for the CTA entrance.",
+      "Build a responsive card grid with CSS Grid auto-fill. Add a live filter using URLSearchParams so filtered state survives page refresh.",
+      "Use CSS Grid for a magazine-style profile layout. Animate the booking button with a CSS keyframe pulse on hover.",
+      "Multi-step form: store each step in state, show a progress bar, animate between steps with a slide transition.",
+      "Dashboard: use recharts or Chart.js for the vitals chart. Skeleton loaders on fetch instead of a spinner — much more polished.",
+      "Blog/resources: implement a debounced search filter client-side. Use CSS :has() for selected-category card highlights.",
+      "Auth forms: show password strength meter, inline validation on blur, and a success micro-animation on submit.",
+      "404 page: make it fun — ASCII art, a lottie animation, or a mini game. Judges notice creative error states.",
+    ],
+    day2: [
+      "Hash passwords with bcrypt (cost factor 12). Return a signed JWT with role in payload. Use middleware to protect all non-auth routes.",
+      "JWT login: add refresh token pattern — short-lived access token (15m) + long-lived refresh token in httpOnly cookie.",
+      "Use cursor-based pagination instead of offset — better performance at scale. Add Redis or in-memory TTL cache.",
+      "Profile endpoint: use a DB view or JOIN to return nested doctor data in one query. Avoid N+1 queries.",
+      "Prevent double-booking at the DB layer with a unique partial index on (doctor_id, datetime, status != 'cancelled').",
+      "Appointment history: add filtering by date range and status. Use query param validation with Zod or Joi.",
+      "PATCH/PUT: use optimistic locking (version field) to prevent concurrent update conflicts.",
+      "Paginated resources: add full-text search with PostgreSQL tsvector or a simple ILIKE fallback.",
+    ],
+  };
+
+  function getVibeHint(tab, index, themeId) {
+    const hints = VIBE_HINTS[tab] || VIBE_HINTS.day1;
+    return hints[index % hints.length] || "Build this your way — choose your stack, your aesthetic, your approach.";
+  }
+
+  function renderVibeToolbox(tab) {
+    const isBackend = tab === "day2";
+    const stacks = isBackend
+      ? [
+          { icon: "🟡", label: "Node + Express", tip: "Fast REST APIs + WebSockets" },
+          { icon: "🐍", label: "FastAPI", tip: "Async Python, auto Swagger docs" },
+          { icon: "🟢", label: "NestJS", tip: "Structured, TypeScript-first" },
+          { icon: "🦀", label: "Bun + Hono", tip: "Edge-ready, ultra-fast" },
+          { icon: "📦", label: "Supabase", tip: "Instant BaaS — no backend needed" },
+          { icon: "🔷", label: "Prisma ORM", tip: "Type-safe DB queries" },
+        ]
+      : [
+          { icon: "⚛️", label: "React", tip: "Hooks + component ecosystem" },
+          { icon: "🟢", label: "Vue 3", tip: "Composition API, fast DX" },
+          { icon: "⚡", label: "Svelte", tip: "Compiles to vanilla JS" },
+          { icon: "🌊", label: "Glassmorphism", tip: "backdrop-blur + semi-transparent" },
+          { icon: "🔲", label: "Bento Grid", tip: "Asymmetric card layouts" },
+          { icon: "💫", label: "Micro-animations", tip: "GSAP / Framer Motion" },
+        ];
+    const tools = [
+      { icon: "🤖", label: "Claude / GPT", tip: "Architecture + boilerplate" },
+      { icon: "🎨", label: "v0.dev", tip: "UI from text → React code" },
+      { icon: "⚡", label: "Cursor", tip: "AI autocomplete in editor" },
+      { icon: "🗂️", label: "Excalidraw", tip: "Whiteboard UML first" },
+    ];
+    return `
+      <details style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <summary style="padding:0.75rem 1rem;cursor:pointer;font-weight:700;font-size:0.88rem;color:var(--text-muted);list-style:none;display:flex;align-items:center;gap:0.5rem;user-select:none;">
+          <span style="color:var(--accent-pink);">✦</span> Vibe Coding Toolbox — ${isBackend ? 'Backend Stacks' : 'Frontend Stacks & Aesthetics'} + AI Tools
+          <span style="margin-left:auto;font-size:0.75rem;opacity:0.5;">click to expand</span>
+        </summary>
+        <div style="padding:0.9rem 1rem 1rem;border-top:1px solid var(--border);">
+          <div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.6rem;">${isBackend ? '⚙️ Backend Options' : '🎨 Frontend / Design Options'}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+            ${stacks.map(s => `
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.75rem;font-size:0.78rem;transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent-pink)'" onmouseout="this.style.borderColor='var(--border)'">
+                <span>${s.icon} <strong>${s.label}</strong></span>
+                <span style="color:var(--text-muted);margin-left:0.35rem;">— ${s.tip}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.6rem;">🤖 AI & Tools</div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+            ${tools.map(t => `
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.75rem;font-size:0.78rem;transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent-teal)'" onmouseout="this.style.borderColor='var(--border)'">
+                <span>${t.icon} <strong>${t.label}</strong></span>
+                <span style="color:var(--text-muted);margin-left:0.35rem;">— ${t.tip}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div style="background:rgba(45,212,191,0.05);border:1px solid rgba(45,212,191,0.15);border-radius:8px;padding:0.65rem 0.9rem;">
+            <div style="font-size:0.76rem;font-weight:700;color:var(--accent-teal);margin-bottom:0.4rem;">💡 Judge Impressers</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.3rem 1.25rem;">
+              ${(isBackend ? [
+                "Rate limiting + input validation on every endpoint",
+                "Consistent error envelope: { success, data, error }",
+                "DB indexes on foreign keys and filter columns",
+                "Environment-based config (.env) — no hardcoded secrets",
+              ] : [
+                "Skeleton loaders instead of spinners",
+                "Optimistic UI — update before API confirms",
+                "Responsive with no horizontal overflow on mobile",
+                "Animated empty states — not just blank boxes",
+              ]).map(tip => `<div style="font-size:0.75rem;color:var(--text-muted);">→ ${tip}</div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </details>
+    `;
+  }
+
   function toggleProgress(key, checked) {
     const progress = getUserProgress(state.user.id);
     // Once a requirement is completed, it's permanently locked — can never be unchecked.
@@ -1280,7 +1403,9 @@ const CONFIG = {
     if (!theme) return '';
     const p1 = calcProgress(state.user.id, theme.id, 1);
     const p2 = calcProgress(state.user.id, theme.id, 2);
-    const overall = Math.round((p1.pts + p2.pts) / (p1.total + (p2.total || 1)) * 100);
+    const totalPts = p1.pts + p2.pts;
+    const totalMax = p1.total + p2.total;
+    const overall = totalMax > 0 ? Math.round((totalPts / totalMax) * 100) : 0;
     return `
       <div class="section-title">📊 My Progress</div>
       <div class="section-subtitle">Track how much of the requirements you've completed.</div>
@@ -1316,23 +1441,56 @@ const CONFIG = {
         ${theme.day1.map((item, i) => {
           const key = `${theme.id}_day1_${i}`;
           const done = !!state.progress[key];
+          // In progress page, only allow checking if it's the next sequential item (same forward-only rule)
+          const progress = getUserProgress(state.user.id);
+          const d1Keys = theme.day1.map((_, j) => `${theme.id}_day1_${j}`);
+          const firstIncomplete = d1Keys.findIndex(k => !progress[k]);
+          const canCheck = !done && (firstIncomplete === i);
           return `
-            <label class="task-check ${done ? 'done' : ''}" style="justify-content:space-between;width:100%;max-width:600px;">
+            <label class="task-check ${done ? 'done' : ''}" style="justify-content:space-between;width:100%;max-width:600px;${!done && !canCheck ? 'opacity:0.5;' : ''}">
               <div style="display:flex;align-items:center;gap:0.5rem;">
                 <input
                   type="checkbox"
                   ${done ? 'checked' : ''}
-                  ${done ? 'disabled' : ''}
+                  ${done || !canCheck ? 'disabled' : ''}
                   onchange="toggleProgress('${key}', this.checked)"
                   style="accent-color:var(--accent-pink);"
                 />
-                <span>${item.text.split('—')[0]}</span>
+                <span style="font-size:0.88rem;">${item.text}</span>
               </div>
-              <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--accent-pink);">${item.pts}pts</span>
+              <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--accent-pink);flex-shrink:0;margin-left:0.5rem;">${item.pts}pts</span>
             </label>
           `;
         }).join('')}
       </div>
+      ${state.currentDay >= 2 ? `
+      <div class="section-title" style="font-size:1rem;">Day 2 Checklist</div>
+      <div class="progress-tasks" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:2rem;">
+        ${theme.day2.map((item, i) => {
+          const key = `${theme.id}_day2_${i}`;
+          const done = !!state.progress[key];
+          const progress = getUserProgress(state.user.id);
+          const d2Keys = theme.day2.map((_, j) => `${theme.id}_day2_${j}`);
+          const firstIncomplete = d2Keys.findIndex(k => !progress[k]);
+          const canCheck = !done && (firstIncomplete === i);
+          return `
+            <label class="task-check ${done ? 'done' : ''}" style="justify-content:space-between;width:100%;max-width:600px;${!done && !canCheck ? 'opacity:0.5;' : ''}">
+              <div style="display:flex;align-items:center;gap:0.5rem;">
+                <input
+                  type="checkbox"
+                  ${done ? 'checked' : ''}
+                  ${done || !canCheck ? 'disabled' : ''}
+                  onchange="toggleProgress('${key}', this.checked)"
+                  style="accent-color:var(--accent-teal);"
+                />
+                <span style="font-size:0.88rem;">${item.text}</span>
+              </div>
+              <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--accent-teal);flex-shrink:0;margin-left:0.5rem;">${item.pts}pts</span>
+            </label>
+          `;
+        }).join('')}
+      </div>
+      ` : '<div style="padding:1rem;background:rgba(250,204,21,0.05);border:1px solid rgba(250,204,21,0.15);border-radius:8px;color:var(--text-muted);font-size:0.88rem;">🔒 Day 2 checklist unlocks when Day 2 begins.</div>'}
     `;
   }
   
@@ -1611,100 +1769,313 @@ const CONFIG = {
     render();
   }
   
-  function renderUseCaseDiagram(theme) {
-    const actors = theme?.id === "community_health"
-      ? ["Patient", "Provider", "Admin"]
-      : theme?.id === "ai_task"
-      ? ["Student", "Manager", "System"]
-      : theme?.id === "financial_dashboard"
-      ? ["Investor", "Analyst", "API"]
-      : ["Individual", "NGO", "Community"];
+function renderUseCaseDiagram(theme) {
+    const data = {
+      community_health: {
+        actors: [
+          { name: "Patient", x: 28, ys: [70, 110, 150, 190] },
+          { name: "Provider", x: 372, ys: [70, 110, 190] },
+          { name: "Admin", x: 372, ys: [150, 230] },
+        ],
+        usecases: [
+          { label: "Register / Login", y: 70 },
+          { label: "Search Doctors", y: 110 },
+          { label: "Book Appointment", y: 150 },
+          { label: "View Dashboard", y: 190 },
+          { label: "Manage Schedules", y: 230 },
+        ],
+        title: "Community Health Platform",
+      },
+      ai_task: {
+        actors: [
+          { name: "Student", x: 28, ys: [70, 110, 150] },
+          { name: "Manager", x: 28, ys: [190, 230] },
+          { name: "AI System", x: 372, ys: [110, 150, 190] },
+        ],
+        usecases: [
+          { label: "Login / Register", y: 70 },
+          { label: "Manage Tasks", y: 110 },
+          { label: "AI Chat", y: 150 },
+          { label: "View Calendar", y: 190 },
+          { label: "Get Schedule", y: 230 },
+        ],
+        title: "AI Task Automation",
+      },
+      financial_dashboard: {
+        actors: [
+          { name: "Investor", x: 28, ys: [70, 110, 150] },
+          { name: "Analyst", x: 28, ys: [190, 230] },
+          { name: "Market API", x: 372, ys: [110, 150, 190] },
+        ],
+        usecases: [
+          { label: "Login / Register", y: 70 },
+          { label: "Search Stocks", y: 110 },
+          { label: "View Charts", y: 150 },
+          { label: "Manage Portfolio", y: 190 },
+          { label: "Watchlist", y: 230 },
+        ],
+        title: "Financial Dashboard",
+      },
+      sustainability: {
+        actors: [
+          { name: "Individual", x: 28, ys: [70, 110, 150] },
+          { name: "NGO", x: 28, ys: [190, 230] },
+          { name: "Ext. API", x: 372, ys: [150, 190] },
+        ],
+        usecases: [
+          { label: "Register / Login", y: 70 },
+          { label: "Log Eco Action", y: 110 },
+          { label: "Calculate Footprint", y: 150 },
+          { label: "Join Challenge", y: 190 },
+          { label: "View Leaderboard", y: 230 },
+        ],
+        title: theme?.name || "Sustainability",
+      },
+    };
+    const d = data[theme?.id] || data.sustainability;
+    const ucX = 200, ucW = 110, ucH = 22;
     return `
-      <svg viewBox="0 0 280 200" class="svg-diagram" xmlns="http://www.w3.org/2000/svg">
-        <rect x="1" y="1" width="278" height="198" rx="8" fill="none" stroke="#2a2a3a" stroke-width="1"/>
-        <text x="140" y="18" text-anchor="middle" font-size="10" fill="#7070a0" font-family="Space Mono">Use Case Diagram</text>
-        <!-- System box -->
-        <rect x="70" y="25" width="140" height="150" rx="8" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4,3"/>
-        <text x="140" y="38" text-anchor="middle" font-size="8" fill="#38bdf8" font-family="Space Mono">System</text>
-        <!-- Use cases -->
-        <ellipse cx="140" cy="65" rx="40" ry="12" fill="#1a1a24" stroke="#e879f9" stroke-width="1"/>
-        <text x="140" y="68" text-anchor="middle" font-size="7" fill="#f0f0ff">Login/Register</text>
-        <ellipse cx="140" cy="100" rx="40" ry="12" fill="#1a1a24" stroke="#e879f9" stroke-width="1"/>
-        <text x="140" y="103" text-anchor="middle" font-size="7" fill="#f0f0ff">Core Feature</text>
-        <ellipse cx="140" cy="135" rx="40" ry="12" fill="#1a1a24" stroke="#e879f9" stroke-width="1"/>
-        <text x="140" y="138" text-anchor="middle" font-size="7" fill="#f0f0ff">View Dashboard</text>
-        <ellipse cx="140" cy="165" rx="40" ry="12" fill="#1a1a24" stroke="#e879f9" stroke-width="1"/>
-        <text x="140" y="168" text-anchor="middle" font-size="7" fill="#f0f0ff">Manage Data</text>
-        <!-- Actors -->
-        ${actors.map((a, i) => `
-          <circle cx="${i === 0 ? 30 : i === 1 ? 250 : 250}" cy="${i === 0 ? 100 : i === 1 ? 80 : 140}" r="10" fill="none" stroke="#2dd4bf" stroke-width="1.5"/>
-          <line x1="${i === 0 ? 30 : i === 1 ? 250 : 250}" y1="${i === 0 ? 110 : i === 1 ? 90 : 150}" x2="${i === 0 ? 30 : i === 1 ? 250 : 250}" y2="${i === 0 ? 135 : i === 1 ? 115 : 170}" stroke="#2dd4bf" stroke-width="1.5"/>
-          <text x="${i === 0 ? 30 : i === 1 ? 250 : 250}" y="${i === 0 ? 152 : i === 1 ? 130 : 185}" text-anchor="middle" font-size="7" fill="#2dd4bf">${a}</text>
-          <line x1="${i === 0 ? 40 : i === 1 ? 240 : 240}" y1="${i === 0 ? 100 : i === 1 ? 90 : 140}" x2="${i === 0 ? 100 : i === 1 ? 180 : 180}" y2="${i === 0 ? 100 : i === 1 ? 95 : 140}" stroke="#2a2a3a" stroke-width="1"/>
-        `).join('')}
-      </svg>
-    `;
-  }
-  
-  function renderClassDiagram(theme) {
-    const tables = theme ? theme.db.slice(0, 3) : ["Users", "Data", "Logs"];
-    return `
-      <svg viewBox="0 0 280 200" class="svg-diagram" xmlns="http://www.w3.org/2000/svg">
-        <text x="140" y="14" text-anchor="middle" font-size="10" fill="#7070a0" font-family="Space Mono">Class Diagram</text>
-        ${tables.map((t, i) => {
-          const name = t.split(':')[0];
-          const fields = t.split(':')[1]?.split(',').slice(0,3).map(f => f.trim()) || [];
-          const x = i === 0 ? 20 : i === 1 ? 100 : 180;
-          const y = i === 1 ? 80 : 40;
-          return `
-            <rect x="${x}" y="${y}" width="80" height="${20 + fields.length * 12}" rx="4" fill="#1a1a24" stroke="#38bdf8" stroke-width="1"/>
-            <rect x="${x}" y="${y}" width="80" height="16" rx="4" fill="#38bdf8" fill-opacity="0.15"/>
-            <text x="${x+40}" y="${y+11}" text-anchor="middle" font-size="7" fill="#38bdf8" font-weight="bold" font-family="Space Mono">${name}</text>
-            ${fields.map((f, j) => `<text x="${x+6}" y="${y+22+j*12}" font-size="6" fill="#7070a0" font-family="Space Mono">• ${f.slice(0,12)}</text>`).join('')}
-          `;
-        })}
-        <!-- Relationship lines -->
-        <line x1="100" y1="80" x2="80" y2="70" stroke="#2a2a3a" stroke-width="1" marker-end="url(#arrow)"/>
-        <line x1="180" y1="80" x2="200" y2="70" stroke="#2a2a3a" stroke-width="1"/>
+      <svg viewBox="0 0 400 290" class="svg-diagram" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <marker id="arrow" markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L6,3 z" fill="#2a2a3a"/>
-          </marker>
+          <marker id="uca" markerWidth="7" markerHeight="7" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 7 3.5, 0 7" fill="#38bdf8" opacity="0.7"/></marker>
+          <linearGradient id="ucHeader" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#e879f9" stop-opacity="0.22"/><stop offset="100%" stop-color="#38bdf8" stop-opacity="0.22"/></linearGradient>
+          <filter id="ucGlow"><feGaussianBlur stdDeviation="2.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         </defs>
-      </svg>
-    `;
-  }
-  
-  function renderSequenceDiagram(theme) {
-    return `
-      <svg viewBox="0 0 280 200" class="svg-diagram" xmlns="http://www.w3.org/2000/svg">
-        <text x="140" y="14" text-anchor="middle" font-size="10" fill="#7070a0" font-family="Space Mono">Sequence Diagram</text>
-        <!-- Actors -->
-        ${["Client", "Server", "DB"].map((a, i) => {
-          const x = 40 + i * 100;
-          return `
-            <rect x="${x-25}" y="20" width="50" height="16" rx="4" fill="#1a1a24" stroke="#e879f9" stroke-width="1"/>
-            <text x="${x}" y="31" text-anchor="middle" font-size="8" fill="#e879f9" font-family="Space Mono">${a}</text>
-            <line x1="${x}" y1="36" x2="${x}" y2="190" stroke="#2a2a3a" stroke-width="1" stroke-dasharray="4,3"/>
-          `;
-        })}
-        <!-- Messages -->
-        ${[
-          {from:40,to:140,y:55,label:"POST /login"},
-          {from:140,to:240,y:80,label:"Query user"},
-          {from:240,to:140,y:105,label:"User record",dashed:true},
-          {from:140,to:40,y:130,label:"JWT token",dashed:true},
-          {from:40,to:140,y:155,label:"GET /data"},
-          {from:140,to:40,y:175,label:"200 response",dashed:true},
-        ].map(m => `
-          <line x1="${m.from}" y1="${m.y}" x2="${m.to}" y2="${m.y}" stroke="${m.dashed?'#2dd4bf':'#38bdf8'}" stroke-width="1.2" ${m.dashed?'stroke-dasharray="4,2"':''}/>
-          <polygon points="${m.to>m.from?m.to-4+','+m.y+' '+(m.to-8)+','+(m.y-3)+' '+(m.to-8)+','+(m.y+3):m.to+4+','+m.y+' '+(m.to+8)+','+(m.y-3)+' '+(m.to+8)+','+(m.y+3)}" fill="${m.dashed?'#2dd4bf':'#38bdf8'}"/>
-          <text x="${(m.from+m.to)/2}" y="${m.y-3}" text-anchor="middle" font-size="6" fill="#7070a0" font-family="Space Mono">${m.label}</text>
+        <!-- Background -->
+        <rect width="400" height="290" rx="10" fill="#0f0f1a" stroke="#1e1e2e" stroke-width="1.5"/>
+        <!-- Title bar -->
+        <rect x="0" y="0" width="400" height="28" rx="10" fill="url(#ucHeader)"/>
+        <rect x="0" y="18" width="400" height="10" fill="url(#ucHeader)"/>
+        <text x="200" y="18" text-anchor="middle" font-size="9.5" fill="#c0c0e0" font-family="Space Mono" font-weight="bold">${d.title} — Use Case Diagram</text>
+        <!-- System boundary -->
+        <rect x="110" y="44" width="180" height="238" rx="8" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="5,3" opacity="0.6"/>
+        <text x="200" y="57" text-anchor="middle" font-size="8" fill="#38bdf8" font-family="Space Mono" opacity="0.8">&lt;&lt;System&gt;&gt;</text>
+        <!-- Use cases -->
+        ${d.usecases.map((uc, i) => `
+          <ellipse cx="${ucX}" cy="${uc.y}" rx="${ucW/2}" ry="${ucH/2}" fill="#161625" stroke="#e879f9" stroke-width="1.2" filter="url(#ucGlow)" opacity="0.95"/>
+          <text x="${ucX}" y="${uc.y + 3.5}" text-anchor="middle" font-size="7.5" fill="#f0e0ff" font-family="Space Mono">${uc.label}</text>
         `).join('')}
+        <!-- Actors and connections -->
+        ${d.actors.map((actor) => {
+          const isLeft = actor.x < 200;
+          const ax = actor.x;
+          // Stick figure
+          const headY = actor.ys[0] - 18;
+          const bodyY = headY + 12;
+          const legsY = bodyY + 18;
+          const connectX = isLeft ? ucX - ucW/2 : ucX + ucW/2;
+          const lineStart = isLeft ? ax + 12 : ax - 12;
+          return `
+            <!-- Actor: ${actor.name} -->
+            <circle cx="${ax}" cy="${headY}" r="7" fill="none" stroke="#2dd4bf" stroke-width="1.5"/>
+            <line x1="${ax}" y1="${headY+7}" x2="${ax}" y2="${bodyY+10}" stroke="#2dd4bf" stroke-width="1.5"/>
+            <line x1="${ax-8}" y1="${bodyY}" x2="${ax+8}" y2="${bodyY}" stroke="#2dd4bf" stroke-width="1.5"/>
+            <line x1="${ax}" y1="${bodyY+10}" x2="${ax-7}" y2="${legsY}" stroke="#2dd4bf" stroke-width="1.5"/>
+            <line x1="${ax}" y1="${bodyY+10}" x2="${ax+7}" y2="${legsY}" stroke="#2dd4bf" stroke-width="1.5"/>
+            <text x="${ax}" y="${legsY+11}" text-anchor="middle" font-size="7" fill="#2dd4bf" font-family="Space Mono">${actor.name}</text>
+            ${actor.ys.map(y => `<line x1="${lineStart}" y1="${y}" x2="${connectX}" y2="${y}" stroke="#2dd4bf" stroke-width="0.9" stroke-dasharray="3,2" opacity="0.55" marker-end="url(#uca)"/>`).join('')}
+          `;
+        }).join('')}
       </svg>
     `;
   }
-  
+
+  function renderClassDiagram(theme) {
+    const schemas = {
+      community_health: [
+        { name: "User", color: "#38bdf8", fields: ["+id: UUID", "+name: String", "+email: String", "+role: Enum"], methods: ["+login()", "+register()"] },
+        { name: "DoctorProfile", color: "#e879f9", fields: ["+user_id: FK", "+specialization", "+location: String", "+working_hours: JSON"], methods: ["+getSlots()"] },
+        { name: "Appointment", color: "#2dd4bf", fields: ["+id: UUID", "+patient_id: FK", "+doctor_id: FK", "+datetime: Date", "+status: Enum"], methods: ["+confirm()", "+cancel()"] },
+        { name: "HealthResource", color: "#facc15", fields: ["+id: UUID", "+title: String", "+category: String", "+published_at: Date"], methods: [] },
+      ],
+      ai_task: [
+        { name: "User", color: "#38bdf8", fields: ["+id: UUID", "+name: String", "+timezone: String", "+role: Enum"], methods: ["+login()"] },
+        { name: "Task", color: "#e879f9", fields: ["+id: UUID", "+user_id: FK", "+title: String", "+priority: Enum", "+status: Enum", "+due_date: Date"], methods: ["+complete()", "+reschedule()"] },
+        { name: "ChatHistory", color: "#2dd4bf", fields: ["+id: UUID", "+user_id: FK", "+role: String", "+message: Text", "+timestamp: Date"], methods: [] },
+        { name: "Event", color: "#facc15", fields: ["+id: UUID", "+task_id: FK", "+start: DateTime", "+end: DateTime"], methods: [] },
+      ],
+      financial_dashboard: [
+        { name: "User", color: "#38bdf8", fields: ["+id: UUID", "+email: String", "+currency: String"], methods: ["+login()"] },
+        { name: "Portfolio", color: "#e879f9", fields: ["+id: UUID", "+user_id: FK", "+symbol: String", "+quantity: Float", "+buy_price: Decimal"], methods: ["+gainLoss()", "+currentValue()"] },
+        { name: "Watchlist", color: "#2dd4bf", fields: ["+id: UUID", "+user_id: FK", "+symbol: String", "+added_at: Date"], methods: ["+getLivePrice()"] },
+        { name: "PriceCache", color: "#facc15", fields: ["+symbol: String", "+data: JSON", "+cached_at: Date"], methods: ["+isStale()"] },
+      ],
+      sustainability: [
+        { name: "User", color: "#38bdf8", fields: ["+id: UUID", "+city: String", "+diet_type: String", "+eco_points: Int"], methods: ["+login()", "+updateStreak()"] },
+        { name: "FootprintLog", color: "#e879f9", fields: ["+id: UUID", "+user_id: FK", "+total_co2: Float", "+logged_date: Date"], methods: ["+calculate()"] },
+        { name: "Challenge", color: "#2dd4bf", fields: ["+id: UUID", "+title: String", "+end_date: Date", "+participant_count: Int"], methods: ["+join()", "+leave()"] },
+        { name: "EcoAction", color: "#4ade80", fields: ["+id: UUID", "+user_id: FK", "+category: String", "+co2_saved: Float", "+points: Int"], methods: ["+log()"] },
+      ],
+    };
+    const tables = schemas[theme?.id] || schemas.community_health;
+    const positions = [
+      { x: 10, y: 38 }, { x: 205, y: 38 },
+      { x: 10, y: 185 }, { x: 205, y: 185 },
+    ];
+    const rowH = 13, headerH = 20, padY = 8, classW = 180;
+    const arrows = [
+      { from: 0, to: 1, label: "1..*" },
+      { from: 0, to: 2, label: "1..*" },
+      { from: 1, to: 3, label: "0..*" },
+    ];
+    return `
+      <svg viewBox="0 0 395 310" class="svg-diagram" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="cdarrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#7070a0"/></marker>
+          <marker id="cddiamond" markerWidth="9" markerHeight="9" refX="1" refY="4.5" orient="auto"><polygon points="1 4.5, 5 1, 9 4.5, 5 8" fill="#7070a0" opacity="0.6"/></marker>
+          <linearGradient id="cdBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0f0f1a"/><stop offset="100%" stop-color="#0a0a14"/></linearGradient>
+        </defs>
+        <rect width="395" height="310" rx="10" fill="url(#cdBg)" stroke="#1e1e2e" stroke-width="1.5"/>
+        <text x="197" y="16" text-anchor="middle" font-size="9.5" fill="#c0c0e0" font-family="Space Mono" font-weight="bold">Class Diagram — ${theme?.name || ''}</text>
+        <!-- Relationship lines -->
+        <line x1="190" y1="80" x2="205" y2="80" stroke="#7070a0" stroke-width="1" marker-end="url(#cdarrow)"/>
+        <line x1="100" y1="${38 + headerH + padY*2 + rowH * (tables[0]?.fields?.length||4)}" x2="100" y2="185" stroke="#7070a0" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#cdarrow)"/>
+        <line x1="295" y1="${38 + headerH + padY*2 + rowH * (tables[1]?.fields?.length||5)}" x2="295" y2="185" stroke="#7070a0" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#cdarrow)"/>
+        ${tables.map((t, i) => {
+          const pos = positions[i];
+          const totalRows = t.fields.length + (t.methods.length ? t.methods.length + 1 : 0);
+          const boxH = headerH + padY*2 + totalRows * rowH + 4;
+          return `
+            <!-- Class: ${t.name} -->
+            <rect x="${pos.x}" y="${pos.y}" width="${classW}" height="${boxH}" rx="6" fill="#161625" stroke="${t.color}" stroke-width="1.5"/>
+            <rect x="${pos.x}" y="${pos.y}" width="${classW}" height="${headerH}" rx="6" fill="${t.color}" fill-opacity="0.18"/>
+            <rect x="${pos.x}" y="${pos.y+14}" width="${classW}" height="6" fill="${t.color}" fill-opacity="0.18"/>
+            <text x="${pos.x + classW/2}" y="${pos.y + 13}" text-anchor="middle" font-size="9" fill="${t.color}" font-family="Space Mono" font-weight="bold">«class» ${t.name}</text>
+            <line x1="${pos.x}" y1="${pos.y + headerH}" x2="${pos.x + classW}" y2="${pos.y + headerH}" stroke="${t.color}" stroke-width="0.7" opacity="0.4"/>
+            ${t.fields.map((f, j) => `<text x="${pos.x + 7}" y="${pos.y + headerH + padY + j * rowH + 9}" font-size="7" fill="#a0a0c0" font-family="Space Mono">${f}</text>`).join('')}
+            ${t.methods.length ? `<line x1="${pos.x}" y1="${pos.y + headerH + padY + t.fields.length * rowH + 4}" x2="${pos.x + classW}" y2="${pos.y + headerH + padY + t.fields.length * rowH + 4}" stroke="${t.color}" stroke-width="0.7" opacity="0.3"/>` : ''}
+            ${t.methods.map((m, j) => `<text x="${pos.x + 7}" y="${pos.y + headerH + padY + (t.fields.length + 1 + j) * rowH + 9}" font-size="7" fill="${t.color}" font-family="Space Mono" opacity="0.85">${m}</text>`).join('')}
+          `;
+        }).join('')}
+      </svg>
+    `;
+  }
+
+  function renderSequenceDiagram(theme) {
+    const seqs = {
+      community_health: {
+        title: "Book Appointment — Sequence",
+        actors: ["Browser", "Frontend", "API Server", "Database"],
+        messages: [
+          { from: 0, to: 1, label: "Submit login form", y: 58 },
+          { from: 1, to: 2, label: "POST /api/auth/login", y: 78 },
+          { from: 2, to: 3, label: "SELECT user WHERE email=?", y: 98 },
+          { from: 3, to: 2, label: "User record", y: 118, dashed: true },
+          { from: 2, to: 1, label: "{ token: JWT }", y: 138, dashed: true },
+          { from: 1, to: 2, label: "GET /api/doctors?spec=cardio", y: 162 },
+          { from: 2, to: 3, label: "SELECT doctors + slots", y: 182 },
+          { from: 3, to: 2, label: "Doctor list + availability", y: 202, dashed: true },
+          { from: 2, to: 1, label: "200 OK — doctors[]", y: 222, dashed: true },
+          { from: 1, to: 2, label: "POST /api/appointments", y: 246 },
+          { from: 2, to: 3, label: "INSERT appointment", y: 266 },
+          { from: 3, to: 2, label: "Appointment ID", y: 280, dashed: true },
+          { from: 2, to: 1, label: "201 Created", y: 295, dashed: true },
+        ],
+      },
+      ai_task: {
+        title: "AI Task Creation — Sequence",
+        actors: ["User", "Chat UI", "API Server", "AI API"],
+        messages: [
+          { from: 0, to: 1, label: "Type: 'Add task: Report by Fri'", y: 58 },
+          { from: 1, to: 2, label: "POST /api/ai/chat", y: 78 },
+          { from: 2, to: 3, label: "Send message + context", y: 98 },
+          { from: 3, to: 2, label: "Parsed task intent + JSON", y: 118, dashed: true },
+          { from: 2, to: 2, label: "INSERT task into DB", y: 138, selfMsg: true },
+          { from: 2, to: 1, label: "{ reply, newTask: {...} }", y: 158, dashed: true },
+          { from: 1, to: 0, label: "Display AI reply + new task card", y: 178, dashed: true },
+          { from: 0, to: 1, label: "POST /api/ai/schedule", y: 202 },
+          { from: 1, to: 2, label: "Send all tasks for scheduling", y: 222 },
+          { from: 2, to: 3, label: "Optimize schedule prompt", y: 242 },
+          { from: 3, to: 2, label: "Ordered schedule[]", y: 262, dashed: true },
+          { from: 2, to: 1, label: "200 OK — schedule[]", y: 282, dashed: true },
+          { from: 1, to: 0, label: "Render calendar view", y: 296, dashed: true },
+        ],
+      },
+      financial_dashboard: {
+        title: "Stock Quote + Portfolio — Sequence",
+        actors: ["User", "Dashboard", "API Server", "Market API"],
+        messages: [
+          { from: 0, to: 1, label: "Search 'AAPL'", y: 58 },
+          { from: 1, to: 2, label: "GET /api/market/quote/AAPL", y: 78 },
+          { from: 2, to: 3, label: "Fetch quote (Finnhub/Alpha)", y: 98 },
+          { from: 3, to: 2, label: "{ price, change, vol }", y: 118, dashed: true },
+          { from: 2, to: 2, label: "Cache result (TTL 60s)", y: 138, selfMsg: true },
+          { from: 2, to: 1, label: "200 OK — quote data", y: 158, dashed: true },
+          { from: 1, to: 0, label: "Render stock card + chart", y: 178, dashed: true },
+          { from: 0, to: 1, label: "Click 'Add to Portfolio'", y: 202 },
+          { from: 1, to: 2, label: "POST /api/portfolio", y: 222 },
+          { from: 2, to: 2, label: "INSERT holding record", y: 242, selfMsg: true },
+          { from: 2, to: 1, label: "201 Created", y: 262, dashed: true },
+          { from: 1, to: 2, label: "GET /api/market/history/AAPL?range=1M", y: 282 },
+          { from: 2, to: 3, label: "Fetch OHLCV data", y: 296 },
+        ],
+      },
+      sustainability: {
+        title: "Carbon Footprint Calc — Sequence",
+        actors: ["User", "Calculator", "API Server", "AQ API"],
+        messages: [
+          { from: 0, to: 1, label: "Fill: transport, diet, energy", y: 58 },
+          { from: 1, to: 2, label: "POST /api/footprint/calculate", y: 78 },
+          { from: 2, to: 2, label: "Apply emission factors", y: 98, selfMsg: true },
+          { from: 2, to: 1, label: "{ total_co2, breakdown }", y: 118, dashed: true },
+          { from: 1, to: 0, label: "Render CO2 visualization", y: 138, dashed: true },
+          { from: 0, to: 1, label: "Log eco action", y: 162 },
+          { from: 1, to: 2, label: "POST /api/actions", y: 182 },
+          { from: 2, to: 2, label: "UPDATE user eco_points", y: 202, selfMsg: true },
+          { from: 2, to: 1, label: "201 Created + new score", y: 222, dashed: true },
+          { from: 1, to: 2, label: "GET /api/env/airquality?city=LHR", y: 246 },
+          { from: 2, to: 3, label: "Proxy → OpenAQ API", y: 266 },
+          { from: 3, to: 2, label: "AQI + pollution data", y: 281, dashed: true },
+          { from: 2, to: 1, label: "200 OK — env data", y: 296, dashed: true },
+        ],
+      },
+    };
+    const s = seqs[theme?.id] || seqs.community_health;
+    const cols = s.actors.length;
+    const W = 400, H = 315;
+    const colW = W / cols;
+    const actorXs = s.actors.map((_, i) => Math.round(colW * i + colW / 2));
+    const actorBoxH = 20, lifelineStart = 38 + actorBoxH;
+    return `
+      <svg viewBox="0 0 ${W} ${H}" class="svg-diagram" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="sqa" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0, 7 3.5, 0 7" fill="#38bdf8"/></marker>
+          <marker id="sqar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0, 7 3.5, 0 7" fill="#2dd4bf"/></marker>
+          <linearGradient id="sqBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0f0f1a"/><stop offset="100%" stop-color="#0a0a14"/></linearGradient>
+        </defs>
+        <rect width="${W}" height="${H}" rx="10" fill="url(#sqBg)" stroke="#1e1e2e" stroke-width="1.5"/>
+        <text x="${W/2}" y="16" text-anchor="middle" font-size="9" fill="#c0c0e0" font-family="Space Mono" font-weight="bold">${s.title}</text>
+        <!-- Actor boxes + lifelines -->
+        ${s.actors.map((a, i) => `
+          <rect x="${actorXs[i]-30}" y="24" width="60" height="${actorBoxH}" rx="5" fill="#161625" stroke="#e879f9" stroke-width="1.2"/>
+          <text x="${actorXs[i]}" y="${24 + actorBoxH/2 + 4}" text-anchor="middle" font-size="7.5" fill="#e8b4f8" font-family="Space Mono">${a}</text>
+          <line x1="${actorXs[i]}" y1="${lifelineStart}" x2="${actorXs[i]}" y2="${H - 10}" stroke="#2a2a3a" stroke-width="1.2" stroke-dasharray="5,3"/>
+        `).join('')}
+        <!-- Messages -->
+        ${s.messages.map(m => {
+          const x1 = actorXs[m.from];
+          const x2 = actorXs[m.to];
+          const color = m.dashed ? "#2dd4bf" : "#38bdf8";
+          const markerEnd = m.dashed ? "url(#sqar)" : "url(#sqa)";
+          if (m.selfMsg) {
+            return `
+              <path d="M${x1},${m.y} Q${x1+22},${m.y} ${x1+22},${m.y+10} Q${x1+22},${m.y+20} ${x1},${m.y+20}" fill="none" stroke="${color}" stroke-width="1.1" stroke-dasharray="${m.dashed?'4,2':''}"/>
+              <polygon points="${x1},${m.y+17} ${x1+4},${m.y+20} ${x1-4},${m.y+20}" fill="${color}"/>
+              <text x="${x1+26}" y="${m.y+12}" font-size="6.2" fill="#7070a0" font-family="Space Mono">${m.label}</text>
+            `;
+          }
+          const dir = x2 > x1 ? 1 : -1;
+          const arrowX = x2 - dir * 2;
+          return `
+            <line x1="${x1}" y1="${m.y}" x2="${arrowX}" y2="${m.y}" stroke="${color}" stroke-width="1.1" ${m.dashed?'stroke-dasharray="4,2"':''} marker-end="${markerEnd}"/>
+            <text x="${(x1+x2)/2}" y="${m.y - 3}" text-anchor="middle" font-size="6.2" fill="#7070a0" font-family="Space Mono">${m.label.length > 28 ? m.label.slice(0,27)+'…' : m.label}</text>
+          `;
+        }).join('')}
+      </svg>
+    `;
+  }
+
+
   // ===== ADMIN PAGE =====
   function renderAdminPage() {
     // Fetch live data if not loaded yet
@@ -1773,7 +2144,26 @@ const CONFIG = {
                     <div class="lb-theme">${theme ? theme.icon + ' ' + theme.name : 'No theme'}</div>
                   </div>
                   <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5;">${memberText}</div>
-                  <div class="lb-pts">${t.team_points || 0} pts</div>
+                  <div class="lb-pts">${(() => {
+                    // Reconstruct actual points from progress map (same logic as leaderboard page)
+                    const th = THEMES.find(th => th.id === t.theme_id);
+                    if (!th) return (t.team_points || 0);
+                    if (typeof t.team_progress_points === "number") return t.team_progress_points;
+                    if (t.progress && typeof t.progress === "object") {
+                      let pts = 0;
+                      Object.entries(t.progress).forEach(([key, done]) => {
+                        if (!done) return;
+                        const parts = key.split("_");
+                        const idx = parseInt(parts[parts.length - 1]);
+                        const dayPart = parts[parts.length - 2];
+                        if (isNaN(idx)) return;
+                        const dayItems = dayPart === "day1" ? th.day1 : th.day2;
+                        if (dayItems && dayItems[idx]) pts += dayItems[idx].pts;
+                      });
+                      return pts;
+                    }
+                    return (t.team_points || 0);
+                  })()} pts</div>
                   <div class="lb-progress">
                     <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${t.completion_pct || 0}%"></div></div>
                     <div class="lb-pct">${t.completion_pct || 0}%</div>
@@ -1796,8 +2186,20 @@ const CONFIG = {
   
   function setDay(day) {
     state.currentDay = day;
-    localStorage.setItem("wn_current_day", day);
-    toast(`Switched to Day ${day}. Requirements updated.`, "success");
+    localStorage.setItem("wn_current_day", String(day));
+    // Persist to server so ALL participants see the unlock immediately
+    (async () => {
+      try {
+        await apiFetch("/api/state/day", {
+          method: "PUT",
+          body: JSON.stringify({ currentDay: day }),
+        });
+      } catch (e) {
+        // Server may not support PUT /api/state/day yet — local change still works
+        console.warn("setDay API call failed:", e.message);
+      }
+    })();
+    toast(`Switched to Day ${day}. Day 2 requirements ${day >= 2 ? "unlocked ✅" : "locked 🔒"} for all participants.`, "success");
     render();
   }
 
@@ -1845,6 +2247,38 @@ const CONFIG = {
     );
   }
   
+  // ===== DIAGRAM EXPAND MODAL =====
+  function openDiagramModal(type, themeId) {
+    const theme = THEMES.find(t => t.id === themeId);
+    if (!theme) return;
+    const overlay = document.getElementById("modal-overlay");
+    if (!overlay) return;
+    const titleMap = { usecase: "Use Case Diagram", class: "Class Diagram", sequence: "Sequence Diagram" };
+    const svgContent = type === "usecase" ? renderUseCaseDiagram(theme)
+      : type === "class" ? renderClassDiagram(theme)
+      : renderSequenceDiagram(theme);
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:820px;max-height:92vh;display:flex;flex-direction:column;padding:1.25rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+          <div>
+            <div style="font-weight:900;font-size:1.1rem;">${theme.icon} ${titleMap[type]}</div>
+            <div style="font-size:0.82rem;color:var(--text-muted);">${theme.name}</div>
+          </div>
+          <button class="btn-ghost" onclick="closeModal()" style="font-size:0.82rem;">✕ Close</button>
+        </div>
+        <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--surface);border-radius:10px;border:1px solid var(--border);padding:1rem;min-height:360px;">
+          <div style="width:100%;max-width:700px;">
+            ${svgContent.replace(/class="svg-diagram"/g, 'style="width:100%;height:auto;display:block;"')}
+          </div>
+        </div>
+        <div style="margin-top:0.85rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+          ${["usecase","class","sequence"].map(t => `<button class="req-tab ${t===type?'active':''}" onclick="openDiagramModal('${t}','${themeId}')">${t==='usecase'?'Use Case':t==='class'?'Class':'Sequence'}</button>`).join('')}
+        </div>
+      </div>
+    `;
+    overlay.classList.add("open");
+  }
+
   // ===== MODAL =====
   function showModal(title, msg, onConfirm) {
     const overlay = document.getElementById("modal-overlay");
@@ -1977,6 +2411,7 @@ const CONFIG = {
   window.lockDesignFocus = lockDesignFocus;
   window.clearTestingData = clearTestingData;
   window.setLbTeamFilter = setLbTeamFilter;
+  window.openDiagramModal = openDiagramModal;
   window.toggleSidebar = toggleSidebar;
   window.closeSidebarOnMobile = closeSidebarOnMobile;
   window.initScrollReveal = initScrollReveal;
