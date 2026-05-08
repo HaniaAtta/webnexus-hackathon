@@ -1649,10 +1649,10 @@ const CONFIG = {
       </div>
       <div class="section-title" style="font-size:1rem;margin:1.25rem 0 0.75rem;">Testing Data</div>
       <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
-        <button class="btn-ghost" onclick="clearTestingData()">🧹 Clear My Progress Data</button>
-        <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.5;">
-          Clears your progress in Supabase and resets local state for testing.
-        </div>
+      <button class="btn-ghost" onclick="clearTestingData()" style="color:var(--error);border-color:var(--error);">🧹 Reset ALL Participants — Progress + Themes + Timers</button>
+      <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.5;">
+        ⚠️ Wipes every team's theme selection, timer, and progress from Supabase. Use before competition starts.
+      </div>
       </div>
     `;
   }
