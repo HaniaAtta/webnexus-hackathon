@@ -2265,7 +2265,7 @@ function renderUseCaseDiagram(theme) {
       try {
         await apiFetch("/api/state/day", {
           method: "PUT",
-          body: JSON.stringify({ currentDay: day }),
+          body: JSON.stringify({ day: day }),
         });
         toast(`Day ${day} unlocked ✅ — all participants will see this now.`, "success");
       } catch (e) {
