@@ -1267,67 +1267,60 @@ const CONFIG = {
       </div>
 
       <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem;">
-      <div style="font-weight:800;color:var(--text-muted);">Team:</div>
-      <select
-        value="${lbFilter}"
-        onchange="setLbTeamFilter(this.value)"
-        style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:220px;max-width:100%;"
-      >
-        ${teamOptions.map(o => `<option value="${o.id}" ${lbFilter===o.id?'selected':''}>${o.label}</option>`).join("")}
-      </select>
-    </div>
-    ${lbFilter !== "all" ? (() => {
-      const t = teamsSorted.find(t => t.teamKey === lbFilter);
-      if (!t) return "";
-      const theme = THEMES.find(th => th.id === t.themeId);
-      return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.9rem;">
-        <strong>${t.teamKey}</strong>${theme ? ` — ${theme.icon} ${theme.name}` : ""}<br/>
-        <span style="color:var(--text-muted);">${(t.memberNames||[]).join(", ")}</span>
-      </div>`;
-    })() : ""}
+        <div style="font-weight:800;color:var(--text-muted);">Team:</div>
         <select
-          value="${lbFilter}"
           onchange="setLbTeamFilter(this.value)"
-          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:260px;"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:0.6rem 0.8rem;font-weight:700;min-width:220px;max-width:100%;"
         >
-          ${teamOptions.map(o => `<option value="${o.id}">${o.label}</option>`).join("")}
+          ${teamOptions.map(o => `<option value="${o.id}" ${lbFilter===o.id?'selected':''}>${o.label}</option>`).join("")}
         </select>
       </div>
 
+      ${lbFilter !== "all" ? (() => {
+        const t = teamsSorted.find(t => t.teamKey === lbFilter);
+        if (!t) return "";
+        const theme = THEMES.find(th => th.id === t.themeId);
+        return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.9rem;">
+          <strong>${t.teamKey}</strong>${theme ? ` — ${theme.icon} ${theme.name}` : ""}<br/>
+          <span style="color:var(--text-muted);">${(t.memberNames||[]).join(", ")}</span>
+        </div>`;
+      })() : ""}
+
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-      <div class="leaderboard-table" style="min-width:580px;">
-        <div class="lb-header">
-          <div>Rank</div>
-          <div>Team</div>
-          <div>Members</div>
-          <div>Points</div>
-          <div>Progress</div>
+        <div class="leaderboard-table" style="min-width:580px;">
+          <div class="lb-header">
+            <div>Rank</div>
+            <div>Team</div>
+            <div>Members</div>
+            <div>Points</div>
+            <div>Progress</div>
+          </div>
+          ${visibleTeams.map((team, i) => {
+            const theme = THEMES.find(t => t.id === team.themeId);
+            const isMeTeam = meUserId && (team.isMyTeam === true);
+            const memberNames = (team.memberNames || []);
+            const shown = memberNames.slice(0, 3);
+            const rest = memberNames.length - shown.length;
+            const memberText = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+            return `
+              <div class="lb-row ${isMeTeam ? 'current-user' : ''}">
+                <div class="lb-rank ${rankColors[i] || ''}">
+                  ${i < 3 ? medals[i] : `#${i+1}`}
+                </div>
+                <div>
+                  <div class="lb-name">${team.teamKey}${isMeTeam ? '<span style="font-size:0.7rem;color:var(--accent-pink);margin-left:0.35rem;">(your team)</span>' : ''}</div>
+                  <div class="lb-theme" style="margin-top:0.25rem;">${theme ? `${theme.icon} ${theme.name}` : "Theme not selected"}</div>
+                </div>
+                <div class="lb-theme" style="font-size:0.9rem;color:var(--text-muted);">${memberText}</div>
+                <div class="lb-pts">${team.teamPoints} pts</div>
+                <div class="lb-progress">
+                  <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.pct}%"></div></div>
+                  <div class="lb-pct">${team.pct}%</div>
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
-        ${visibleTeams.map((team, i) => {
-          const theme = THEMES.find(t => t.id === team.themeId);
-          const isMeTeam = meUserId && (team.isMyTeam === true);
-          const memberNames = (team.memberNames || []);
-          const shown = memberNames.slice(0, 3);
-          const rest = memberNames.length - shown.length;
-          const memberText = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
-          return `
-            <div class="lb-row ${isMeTeam ? 'current-user' : ''}">
-              <div class="lb-rank ${rankColors[i] || ''}">
-                ${i < 3 ? medals[i] : `#${i+1}`}
-              </div>
-              <div>
-                <div class="lb-name">${team.teamKey}${isMeTeam ? '<span style="font-size:0.7rem;color:var(--accent-pink);margin-left:0.35rem;">(your team)</span>' : ''}</div>
-                <div class="lb-theme" style="margin-top:0.25rem;">${theme ? `${theme.icon} ${theme.name}` : "Theme not selected"}</div>
-              </div>
-              <div class="lb-theme" style="font-size:0.9rem;color:var(--text-muted);">${memberText}</div>
-              <div class="lb-pts">${team.teamPoints} pts</div>
-              <div class="lb-progress">
-                <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${team.pct}%"></div></div>
-                <div class="lb-pct">${team.pct}%</div>
-              </div>
-            </div>
-          `;
-        }).join('')}
       </div>
     `;
   }
@@ -1706,7 +1699,8 @@ const CONFIG = {
         state.currentDay = 1;
         state.selectedTheme = null;
         state.themeConfirmed = false;
-        state.currentPage = "themes";
+        state.currentPage = "admin";
+        state.adminTeams = null;
 
         toast("Testing data cleared.", "success");
         render();
